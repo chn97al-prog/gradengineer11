@@ -1,8 +1,8 @@
 // api/submit-order.js (Vercel Serverless Function) - إصدار فائق الاستقرار
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL; 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;      // جروب الدفعات
-const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID;  // قناة الفردي
+const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID;      // جروب الدفعات
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;  // قناة الفردي
 
 module.exports = async function handler(req, res) {
   // ترويسات CORS لتجنب مشاكل المتصفح
@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
   }
 
   // التحقق من متغيرات البيئة
-  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !TELEGRAM_BATCH_CHAT_ID) {
+  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_BATCH_CHAT_ID || !TELEGRAM_CHAT_ID) {
     return res.status(500).json({ 
       success: false, 
       error: "متغيرات البيئة غير مكتملة في Vercel. يرجى التأكد من الـ 4 متغيرات." 
@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
           
           // إرسال تفاصيل الدفعة للتوبك
           await sendTelegramMessage(
-            TELEGRAM_CHAT_ID,
+            TELEGRAM_BATCH_CHAT_ID,
             `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
             `🔑 *كود الدفعة:* \`${newCode}\`\n` +
             `👤 *الممثل (الكامل):* ${body.repName}\n` +
@@ -88,7 +88,7 @@ module.exports = async function handler(req, res) {
 
           // إرسال الإشعار لقناة الفردي
           await sendTelegramMessage(
-            TELEGRAM_BATCH_CHAT_ID,
+            TELEGRAM_CHAT_ID,
             `🤝 *طالب جديد انضم للفردي!*\n\n` +
             `🔑 *كود الدفعة:* \`${batchCode}\`\n` +
             `👤 *اسم الطالب:* ${body.studentName}\n` +
@@ -118,7 +118,7 @@ async function createTelegramTopic(name) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: TELEGRAM_BATCH_CHAT_ID,
         name: name 
       })
     });
@@ -143,7 +143,7 @@ async function sendTelegramMessage(targetChatId, text, threadId = null) {
       parse_mode: "Markdown"
     };
     
-    if (threadId && targetChatId === TELEGRAM_CHAT_ID) {
+    if (threadId && targetChatId === TELEGRAM_BATCH_CHAT_ID) {
       payload.message_thread_id = threadId;
     }
 

@@ -1,11 +1,11 @@
-// api/submit-order.js (Vercel Serverless Function) - إصدار فائق الاستقرار
+// api/submit-order.js (Vercel Serverless Function) - النسخة الاحترافية الكاملة
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL; 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID;      // جروب الدفعات
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;  // قناة الفردي
+const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID;      // جروب الدفعات (الذي يحتوي على توبكس)
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;                  // قناة الطلبات الفردية
 
 module.exports = async function handler(req, res) {
-  // ترويسات CORS لتجنب مشاكل المتصفح
+  // ترويسات CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -18,7 +18,7 @@ module.exports = async function handler(req, res) {
   if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_BATCH_CHAT_ID || !TELEGRAM_CHAT_ID) {
     return res.status(500).json({ 
       success: false, 
-      error: "متغيرات البيئة غير مكتملة في Vercel. يرجى التأكد من الـ 4 متغيرات." 
+      error: "متغيرات البيئة غير مكتملة في Vercel. يرجى التأكد من إعداد الـ 4 متغيرات." 
     });
   }
 
@@ -42,7 +42,6 @@ module.exports = async function handler(req, res) {
 
     // 2. عمليات الإرسال والحفظ (POST)
     if (req.method === "POST") {
-      // التأكد من استخراج الـ body كـ JSON بشكل سليم
       let body = req.body;
       if (typeof body === "string") {
         body = JSON.parse(body);
@@ -52,24 +51,25 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ success: false, error: "بيانات الطلب غير صالحة" });
       }
 
-      // إرسال البيانات لجوجل شيت
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      // ----------------------------------------------------
+      // الحالة (أ): تأسيس دفعة جديدة (CREATE_BATCH)
+      // ----------------------------------------------------
+      if (body.actionType === "CREATE_BATCH") {
+        // 1. نرسل أولاً لجوجل شيت لإنشاء الدفعة وتوليد الكود التسلسلي (مثلاً Ali1)
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const result = await response.json();
 
-      const result = await response.json();
-
-      if (result.success) {
-        // حالة تأسيس دفعة جديدة
-        if (body.actionType === "CREATE_BATCH") {
+        if (result.success) {
           const newCode = result.batchCode;
-          
-          // إنشاء التوبك في تليجرام
+
+          // 2. ننشئ التوبيك في تليجرام باسم كود الدفعة الجديد
           const threadId = await createTelegramTopic(newCode);
-          
-          // إرسال تفاصيل الدفعة للتوبك
+
+          // 3. نرسل إشعار التأسيس داخل هذا التوبيك الجديد
           await sendTelegramMessage(
             TELEGRAM_BATCH_CHAT_ID,
             `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
@@ -80,26 +80,80 @@ module.exports = async function handler(req, res) {
             `🎨 *الموديل:* ${body.batchModel}`,
             threadId
           );
+
+          // 4. خطوة ذكية: نحدث السكريبت في جوجل شيت بحفظ الـ threadId الخاص بالدفعة للرجوع له عند انضمام الطلاب
+          await fetch(GOOGLE_SCRIPT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              actionType: "UPDATE_THREAD_ID",
+              batchCode: newCode,
+              threadId: threadId
+            }),
+          });
         }
 
-        // حالة انضمام طالب جديد
-        if (body.actionType === "JOIN_BATCH") {
-          const batchCode = body.batchCode;
+        return res.status(response.status).json(result);
+      }
 
-          // إرسال الإشعار لقناة الفردي
+      // ----------------------------------------------------
+      // الحالة (ب): انضمام طالب لدفعة (JOIN_BATCH)
+      // ----------------------------------------------------
+      if (body.actionType === "JOIN_BATCH") {
+        // نرسل البيانات لجوجل شيت لتسجيل الطالب
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          // جلب الـ threadId الذي حفظناه سابقاً للدفعة من جوجل شيت (يرجعه السكريبت في الـ result)
+          const threadId = result.threadId || (result.batchData && result.batchData.threadId);
+
+          // إرسال الإشعار داخل التوبيك المخصص لهذه الدفعة في جروب الدفعات
+          await sendTelegramMessage(
+            TELEGRAM_BATCH_CHAT_ID,
+            `🤝 *طالب جديد انضم للدفعة!*\n\n` +
+            `🔑 *كود الدفعة:* \`${body.batchCode}\`\n` +
+            `👤 *اسم الطالب:* ${body.studentName}\n` +
+            `✨ *اسم الوشاح:* ${body.sashText}\n` +
+            `🎨 *تفاصيل التطريز:* ${body.sashBackText || "لا يوجد"}\n` +
+            `➕ *الإضافات:* ${body.additions || "لا توجد"}`,
+            threadId
+          );
+        }
+
+        return res.status(response.status).json(result);
+      }
+
+      // ----------------------------------------------------
+      // الحالة (ج): طلب فردي مستقل (INDIVIDUAL_ORDER)
+      // ----------------------------------------------------
+      if (body.actionType === "INDIVIDUAL_ORDER" || body.actionType === "SINGLE_ORDER") {
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          // إرسال الإشعار فوراً ومباشرة لقناة الطلب الفردي الخاصة
           await sendTelegramMessage(
             TELEGRAM_CHAT_ID,
-            `🤝 *طالب جديد انضم للفردي!*\n\n` +
-            `🔑 *كود الدفعة:* \`${batchCode}\`\n` +
-            `👤 *اسم الطالب:* ${body.studentName}\n` +
+            `🛍️ *طلب فردي جديد!*\n\n` +
+            `👤 *اسم الزبون:* ${body.studentName || body.clientName}\n` +
+            `📞 *الهاتف:* ${body.studentPhone || body.clientPhone || "غير متوفر"}\n` +
             `✨ *اسم الوشاح:* ${body.sashText}\n` +
             `🎨 *تفاصيل التطريز:* ${body.sashBackText || "لا يوجد"}\n` +
             `➕ *الإضافات:* ${body.additions || "لا توجد"}`
           );
         }
-      }
 
-      return res.status(response.status).json(result);
+        return res.status(response.status).json(result);
+      }
     }
 
     return res.status(405).json({ success: false, error: "الطريقة غير مدعومة" });
@@ -114,14 +168,17 @@ module.exports = async function handler(req, res) {
 async function createTelegramTopic(name) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createForumTopic`;
+    const numericChatId = isNaN(TELEGRAM_BATCH_CHAT_ID) ? TELEGRAM_BATCH_CHAT_ID : Number(TELEGRAM_BATCH_CHAT_ID);
+
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: TELEGRAM_BATCH_CHAT_ID,
+        chat_id: numericChatId,
         name: name 
       })
     });
+    
     const data = await response.json();
     if (data.ok) {
       return data.result.message_thread_id; 
@@ -137,21 +194,29 @@ async function createTelegramTopic(name) {
 async function sendTelegramMessage(targetChatId, text, threadId = null) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const chatValue = isNaN(targetChatId) ? targetChatId : Number(targetChatId);
+
     const payload = {
-      chat_id: targetChatId,
+      chat_id: chatValue,
       text: text,
       parse_mode: "Markdown"
     };
     
-    if (threadId && targetChatId === TELEGRAM_BATCH_CHAT_ID) {
-      payload.message_thread_id = threadId;
+    // إرسال داخل التوبك إذا تم تمرير الـ threadId
+    if (threadId && Number(targetChatId) === Number(TELEGRAM_BATCH_CHAT_ID)) {
+      payload.message_thread_id = Number(threadId);
     }
 
-    await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+    
+    const result = await res.json();
+    if (!result.ok) {
+      console.error("تليجرام رفض إرسال الرسالة. السبب:", result.description);
+    }
   } catch (err) {
     console.error("فشل إرسال التليجرام:", err);
   }

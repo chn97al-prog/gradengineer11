@@ -1,16 +1,11 @@
-// api/submit-order.js (Vercel Serverless Function) - مجاني 100% وبدون KV
-export const config = {
-  maxDuration: 60, // زيادة وقت الانتظار لضمان عدم تعليق السيرفر
-};
-
-// قراءة الإعدادات والروابط بأمان من الـ Environment Variables في فيرسيل
+// api/submit-order.js (Vercel Serverless Function) - إصدار فائق الاستقرار
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL; 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;      // آيدي جروب الدفعات (توبكس)
-const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;  // آيدي قناة الفردي الخاصة بالطلاب
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;      // جروب الدفعات
+const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID;  // قناة الفردي
 
-export default async function handler(req, res) {
-  // ترويسات CORS للسماح بالوصول الآمن من موقعك
+module.exports = async function handler(req, res) {
+  // ترويسات CORS لتجنب مشاكل المتصفح
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -19,16 +14,16 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  // التحقق من أنك أضفت المتغيرات الأربعة في لوحة تحكم فيرسيل
-  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !TELEGRAM_CHANNEL_ID) {
+  // التحقق من متغيرات البيئة
+  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !TELEGRAM_BATCH_CHAT_ID) {
     return res.status(500).json({ 
       success: false, 
-      error: "يرجى التأكد من إضافة المتغيرات الأربعة (GOOGLE_SCRIPT_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID) في إعدادات Vercel." 
+      error: "متغيرات البيئة غير مكتملة في Vercel. يرجى التأكد من الـ 4 متغيرات." 
     });
   }
 
   try {
-    // 1. عملية فحص الكود (GET) - تتم مباشرة عبر الاستعلام من جوجل شيت
+    // 1. عملية فحص الكود (GET)
     if (req.method === "GET") {
       const { actionType, batchCode } = req.query;
 
@@ -47,9 +42,17 @@ export default async function handler(req, res) {
 
     // 2. عمليات الإرسال والحفظ (POST)
     if (req.method === "POST") {
-      const body = req.body;
+      // التأكد من استخراج الـ body كـ JSON بشكل سليم
+      let body = req.body;
+      if (typeof body === "string") {
+        body = JSON.parse(body);
+      }
 
-      // إرسال البيانات لجوجل شيت لحفظها وتوليد الكود التسلسلي المميز للممثل
+      if (!body || !body.actionType) {
+        return res.status(400).json({ success: false, error: "بيانات الطلب غير صالحة" });
+      }
+
+      // إرسال البيانات لجوجل شيت
       const response = await fetch(GOOGLE_SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -59,14 +62,14 @@ export default async function handler(req, res) {
       const result = await response.json();
 
       if (result.success) {
-        // حالة (أ): تأسيس دفعة جديدة -> إنشاء توبك وإرسال الإشعار لجروب الدفعات
+        // حالة تأسيس دفعة جديدة
         if (body.actionType === "CREATE_BATCH") {
           const newCode = result.batchCode;
           
-          // إنشاء التوبك تلقائياً في التليجرام باسم الكود الجديد (مثال: Ali1)
+          // إنشاء التوبك في تليجرام
           const threadId = await createTelegramTopic(newCode);
           
-          // إرسال تفاصيل الدفعة داخل التوبك الذي تم إنشاؤه للتو
+          // إرسال تفاصيل الدفعة للتوبك
           await sendTelegramMessage(
             TELEGRAM_CHAT_ID,
             `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
@@ -79,12 +82,13 @@ export default async function handler(req, res) {
           );
         }
 
-        // حالة (ب): انضمام طالب جديد -> يرسل الإشعار مباشرة لقناة الفردي الخاصة
+        // حالة انضمام طالب جديد
         if (body.actionType === "JOIN_BATCH") {
           const batchCode = body.batchCode;
 
+          // إرسال الإشعار لقناة الفردي
           await sendTelegramMessage(
-            TELEGRAM_CHANNEL_ID,
+            TELEGRAM_BATCH_CHAT_ID,
             `🤝 *طالب جديد انضم للفردي!*\n\n` +
             `🔑 *كود الدفعة:* \`${batchCode}\`\n` +
             `👤 *اسم الطالب:* ${body.studentName}\n` +
@@ -98,15 +102,15 @@ export default async function handler(req, res) {
       return res.status(response.status).json(result);
     }
 
-    return res.status(405).json({ success: false, error: "الطريقة غير مسموح بها" });
+    return res.status(405).json({ success: false, error: "الطريقة غير مدعومة" });
 
   } catch (error) {
-    console.error("Vercel Function Error:", error);
-    return res.status(500).json({ success: false, error: "حدث خطأ في الاتصال بالسيرفر: " + error.message });
+    console.error("خطأ سيرفر فيرسل:", error);
+    return res.status(500).json({ success: false, error: "فشل في السيرفر: " + error.message });
   }
-}
+};
 
-// دالة لإنشاء Topic (موضوع) جديد في جروب الدفعات بالتليجرام
+// دالة إنشاء التوبك بالتليجرام
 async function createTelegramTopic(name) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createForumTopic`;
@@ -120,16 +124,16 @@ async function createTelegramTopic(name) {
     });
     const data = await response.json();
     if (data.ok) {
-      return data.result.message_thread_id; // إرجاع آيدي التوبك المولد تلقائياً
+      return data.result.message_thread_id; 
     }
     return null;
   } catch (err) {
-    console.error("خطأ في إنشاء التوبك:", err);
+    console.error("فشل إنشاء التوبك:", err);
     return null;
   }
 }
 
-// دالة إرسال الرسائل العامة (تدعم التوجيه داخل التوبكس للجروبات)
+// دالة إرسال الرسائل العامة
 async function sendTelegramMessage(targetChatId, text, threadId = null) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -139,7 +143,6 @@ async function sendTelegramMessage(targetChatId, text, threadId = null) {
       parse_mode: "Markdown"
     };
     
-    // إذا كانت الوجهة هي جروب الدفعات الرئيسي وهناك توبك محدد، أرسلها داخله
     if (threadId && targetChatId === TELEGRAM_CHAT_ID) {
       payload.message_thread_id = threadId;
     }
@@ -150,6 +153,6 @@ async function sendTelegramMessage(targetChatId, text, threadId = null) {
       body: JSON.stringify(payload)
     });
   } catch (err) {
-    console.error("خطأ في إرسال رسالة التليجرام:", err);
+    console.error("فشل إرسال التليجرام:", err);
   }
 }

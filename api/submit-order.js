@@ -1,18 +1,16 @@
-// api/submit-order.js (Vercel Serverless Function)
-import { kv } from '@vercel/kv';
-
+// api/submit-order.js (Vercel Serverless Function) - مجاني 100% وبدون KV
 export const config = {
-  maxDuration: 60, // تجنب الـ Timeout مع جوجل شيت
+  maxDuration: 60, // زيادة وقت الانتظار لضمان عدم تعليق السيرفر
 };
 
-// قراءة الإعدادات من الـ Environment Variables بأمان تامة
+// قراءة الإعدادات والروابط بأمان من الـ Environment Variables في فيرسيل
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL; 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;      // آيدي جروب الدفعات (الذي يحتوي على توبكس)
-const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID;  // آيدي قناة الفردي الخاصة بالطلاب
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;      // آيدي جروب الدفعات (توبكس)
+const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;  // آيدي قناة الفردي الخاصة بالطلاب
 
 export default async function handler(req, res) {
-  // ترويسات CORS
+  // ترويسات CORS للسماح بالوصول الآمن من موقعك
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -21,16 +19,16 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  // التحقق من المتغيرات
-  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !TELEGRAM_BATCH_CHAT_ID) {
+  // التحقق من أنك أضفت المتغيرات الأربعة في لوحة تحكم فيرسيل
+  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !TELEGRAM_CHANNEL_ID) {
     return res.status(500).json({ 
       success: false, 
-      error: "يرجى التأكد من ضبط جميع متغيرات البيئة (الجروب، القناة، التوكن، ورابط جوجل) في Vercel." 
+      error: "يرجى التأكد من إضافة المتغيرات الأربعة (GOOGLE_SCRIPT_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID) في إعدادات Vercel." 
     });
   }
 
   try {
-    // 1. عملية التحقق السريعة (GET)
+    // 1. عملية فحص الكود (GET) - تتم مباشرة عبر الاستعلام من جوجل شيت
     if (req.method === "GET") {
       const { actionType, batchCode } = req.query;
 
@@ -39,27 +37,19 @@ export default async function handler(req, res) {
           return res.status(400).json({ success: false, error: "كود الدفعة مطلوب" });
         }
 
-        const savedBatch = await kv.get(`batch:${batchCode.toLowerCase()}`);
-
-        if (savedBatch) {
-          return res.status(200).json({ success: true, batchData: savedBatch });
-        } else {
-          const targetUrl = `${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(batchCode)}`;
-          const response = await fetch(targetUrl, { method: "GET" });
-          const result = await response.json();
-          
-          if (result.success) {
-            await kv.set(`batch:${batchCode.toLowerCase()}`, result.batchData);
-          }
-          return res.status(response.status).json(result);
-        }
+        const targetUrl = `${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(batchCode)}`;
+        const response = await fetch(targetUrl, { method: "GET" });
+        const result = await response.json();
+        
+        return res.status(response.status).json(result);
       }
     }
 
-    // 2. عمليات الإنشاء والانضمام (POST)
+    // 2. عمليات الإرسال والحفظ (POST)
     if (req.method === "POST") {
       const body = req.body;
 
+      // إرسال البيانات لجوجل شيت لحفظها وتوليد الكود التسلسلي المميز للممثل
       const response = await fetch(GOOGLE_SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,21 +59,14 @@ export default async function handler(req, res) {
       const result = await response.json();
 
       if (result.success) {
-        // حالة (أ): تأسيس دفعة جديدة -> ترسل إلى جروب الدفعات داخل توبك جديد
+        // حالة (أ): تأسيس دفعة جديدة -> إنشاء توبك وإرسال الإشعار لجروب الدفعات
         if (body.actionType === "CREATE_BATCH") {
           const newCode = result.batchCode;
           
-          // إنشاء التوبك باسم الدفعة داخل جروب الدفعات
+          // إنشاء التوبك تلقائياً في التليجرام باسم الكود الجديد (مثال: Ali1)
           const threadId = await createTelegramTopic(newCode);
           
-          const batchDataToSave = {
-            ...result.batchData,
-            threadId: threadId 
-          };
-
-          await kv.set(`batch:${newCode.toLowerCase()}`, batchDataToSave);
-          
-          // إرسال الرسالة إلى التوبك الجديد في جروب الدفعات
+          // إرسال تفاصيل الدفعة داخل التوبك الذي تم إنشاؤه للتو
           await sendTelegramMessage(
             TELEGRAM_CHAT_ID,
             `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
@@ -96,13 +79,12 @@ export default async function handler(req, res) {
           );
         }
 
-        // حالة (ب): انضمام طالب جديد -> ترسل إلى قناة الفردي الخاصة بالطلاب
+        // حالة (ب): انضمام طالب جديد -> يرسل الإشعار مباشرة لقناة الفردي الخاصة
         if (body.actionType === "JOIN_BATCH") {
           const batchCode = body.batchCode;
 
-          // إرسال الإشعار مباشرة إلى القناة الخاصة بالفردي (بدون توبك لأنها قناة وليست مجموعة)
           await sendTelegramMessage(
-            TELEGRAM_BATCH_CHAT_ID,
+            TELEGRAM_CHANNEL_ID,
             `🤝 *طالب جديد انضم للفردي!*\n\n` +
             `🔑 *كود الدفعة:* \`${batchCode}\`\n` +
             `👤 *اسم الطالب:* ${body.studentName}\n` +
@@ -124,7 +106,7 @@ export default async function handler(req, res) {
   }
 }
 
-// دالة لإنشاء Topic جديد في جروب الدفعات
+// دالة لإنشاء Topic (موضوع) جديد في جروب الدفعات بالتليجرام
 async function createTelegramTopic(name) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createForumTopic`;
@@ -132,13 +114,13 @@ async function createTelegramTopic(name) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID, // يُنشأ التوبك دائماً في جروب الدفعات الرئيسي
+        chat_id: TELEGRAM_CHAT_ID,
         name: name 
       })
     });
     const data = await response.json();
     if (data.ok) {
-      return data.result.message_thread_id; 
+      return data.result.message_thread_id; // إرجاع آيدي التوبك المولد تلقائياً
     }
     return null;
   } catch (err) {
@@ -147,7 +129,7 @@ async function createTelegramTopic(name) {
   }
 }
 
-// دالة إرسال الرسائل الديناميكية (تستقبل الـ Chat ID المستهدف والتوبك إن وجد)
+// دالة إرسال الرسائل العامة (تدعم التوجيه داخل التوبكس للجروبات)
 async function sendTelegramMessage(targetChatId, text, threadId = null) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -157,7 +139,7 @@ async function sendTelegramMessage(targetChatId, text, threadId = null) {
       parse_mode: "Markdown"
     };
     
-    // إذا أرسلنا لجروب الدفعات وكان هناك توبك، نوجهها داخل التوبك
+    // إذا كانت الوجهة هي جروب الدفعات الرئيسي وهناك توبك محدد، أرسلها داخله
     if (threadId && targetChatId === TELEGRAM_CHAT_ID) {
       payload.message_thread_id = threadId;
     }
@@ -168,6 +150,6 @@ async function sendTelegramMessage(targetChatId, text, threadId = null) {
       body: JSON.stringify(payload)
     });
   } catch (err) {
-    console.error("خطأ في إرسال تليجرام:", err);
+    console.error("خطأ في إرسال رسالة التليجرام:", err);
   }
 }

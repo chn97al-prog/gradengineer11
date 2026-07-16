@@ -9,7 +9,7 @@ export const config = {
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL; 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;      // آيدي جروب الدفعات (الذي يحتوي على توبكس)
-const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;  // آيدي قناة الفردي الخاصة بالطلاب
+const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID;  // آيدي قناة الفردي الخاصة بالطلاب
 
 export default async function handler(req, res) {
   // ترويسات CORS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   }
 
   // التحقق من المتغيرات
-  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !TELEGRAM_CHANNEL_ID) {
+  if (!GOOGLE_SCRIPT_URL || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !TELEGRAM_BATCH_CHAT_ID) {
     return res.status(500).json({ 
       success: false, 
       error: "يرجى التأكد من ضبط جميع متغيرات البيئة (الجروب، القناة، التوكن، ورابط جوجل) في Vercel." 
@@ -102,7 +102,7 @@ export default async function handler(req, res) {
 
           // إرسال الإشعار مباشرة إلى القناة الخاصة بالفردي (بدون توبك لأنها قناة وليست مجموعة)
           await sendTelegramMessage(
-            TELEGRAM_CHANNEL_ID,
+            TELEGRAM_BATCH_CHAT_ID,
             `🤝 *طالب جديد انضم للفردي!*\n\n` +
             `🔑 *كود الدفعة:* \`${batchCode}\`\n` +
             `👤 *اسم الطالب:* ${body.studentName}\n` +

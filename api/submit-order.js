@@ -93,6 +93,7 @@ module.exports = async function handler(req, res) {
                             `👤 *الممثل:* ${cleanText(cleanPayload.repName)}\n` +
                             `📞 *الهاتف:* ${cleanText(cleanPayload.repPhone)}\n` +
                             `🏫 *الجامعة:* ${cleanText(cleanPayload.uniName)} - ${cleanText(cleanPayload.collName)}\n` +
+                            `👥 *عدد الطلاب:* ${cleanText(cleanPayload.studentCount)}\n` +
                             `🎨 *الموديل المعتمد:* ${cleanText(cleanPayload.batchModel)}\n` +
                             `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
         
@@ -121,8 +122,8 @@ module.exports = async function handler(req, res) {
           studentName: body.studentName || body.name || "",
           sashText: body.sashText || "",
           sashBack: body.sashBack || body.sashBackText || "",
-          capTop: body.capTop || "",
-          capSide: body.capSide || "",
+          capTop: body.capTop || body.capTopText || "",
+          capSide: body.capSide || body.capSideText || "",
           additions: body.additions || "",
           base64: extractedImages.length > 0 ? extractedImages[0] : null,
           images: extractedImages // إرسال كافة الصور للشيت إن أمكن

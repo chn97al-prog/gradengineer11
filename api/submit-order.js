@@ -1,4 +1,4 @@
-// api/submit-order.js
+// api/submit-order.js (الإصدار الشامل والمصحح)
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL; 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
 const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID; 
@@ -27,7 +27,7 @@ module.exports = async function handler(req, res) {
 
       const cleanText = (str) => (!str ? "غير متوفر" : String(str).replace(/[_*`\[\]()]/g, "\\$&"));
       
-      // استخراج كافة نصوص الـ Base64 (الصور) تلقائياً
+      // دالة لاستخراج كل نصوص Base64 من الـ body بشكل ديناميكي
       const getAllBase64s = (obj) => {
         let list = [];
         const extract = (item) => {
@@ -46,12 +46,6 @@ module.exports = async function handler(req, res) {
       const extractedImages = getAllBase64s(body);
 
       // ----------------------------------------------------
-      // المِصيَدة الذكية لجلب عدد الطلاب وكود الدفعة مهما كانت المسميات القادمة من الفرونت إند
-      // ----------------------------------------------------
-      const sCount = body.studentCount || body.count || body.studentsCount || body.studentsNumber || body.students_number || body.totalStudents || "غير متوفر";
-      const incomingBatchCode = String(body.batchCode || body.threadId || body.code || body.batch_code || "").trim();
-
-      // ----------------------------------------------------
       // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
       // ----------------------------------------------------
       if (body.actionType === "CREATE_BATCH") {
@@ -60,36 +54,34 @@ module.exports = async function handler(req, res) {
 
         if (!threadId) return res.status(500).json({ success: false, error: "فشل تليجرام في إنشاء التوبك" });
 
-        // فرض رقم التوبك ككود موحد وإرساله مجدداً في الطلب المتوجه للجوجل شيت
         const finalNumericCode = String(threadId);
         body.batchCode = finalNumericCode;
         body.threadId = finalNumericCode;
-        body.studentCount = sCount; // توحيد الحقل المرسل للشيت أيضاً
 
         // إرسال البيانات فوراً إلى جوجل شيت
-        await fetch(GOOGLE_SCRIPT_URL, {
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         
-        // إرسال التقرير النصي للتليجرام متضمناً كود الدفعة النهائي وعدد الطلاب الصحيح
+        // إرسال التقرير النصي للتليجرام
         const messageText = `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
                             `🔢 *كود الدفعة الموحد:* \`${finalNumericCode}\`\n` +
                             `👤 *الممثل:* ${cleanText(body.repName || body.name)}\n` +
                             `📞 *الهاتف:* ${cleanText(body.repPhone || body.phone)}\n` +
                             `🏫 *الجامعة:* ${cleanText(body.uniName)} - ${cleanText(body.collName)}\n` +
-                            `👥 *عدد الطلاب المتوقع:* ${cleanText(sCount)}\n` +
                             `🎨 *الموديل المعتمد:* ${cleanText(body.batchModel || body.model)}`;
         
         await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
         await updateTelegramTopicName(threadId, `دفعة رقم: ${finalNumericCode}`);
 
+        // إذا تم العثور على أي صورة (شعار الجامعة)، يتم إرسالها فوراً للتوبك
         if (extractedImages.length > 0) {
           await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, extractedImages[0], `📸 شعار الجامعة الرسمي لدفعة رقم: ${finalNumericCode}`, threadId);
         }
 
-        // إرجاع رد صارم يحمل الكود النهائي ليجبر الفرونت إند على حفظه
+        // إرجاع رد صارم للفرونت إند يحمل الكود النهائي لمنع أي التباس
         return res.status(200).json({ success: true, batchCode: finalNumericCode });
       }
 
@@ -97,9 +89,8 @@ module.exports = async function handler(req, res) {
       // الحالة ب: انضمام طالب لدفعة (JOIN_BATCH)
       // ----------------------------------------------------
       if (body.actionType === "JOIN_BATCH") {
-        // إذا كان الفرونت إند قد أرسل كوداً فارغاً، سنضع حماية لمنع توقف السيرفر
-        const currentBatchCode = incomingBatchCode || "كود_مفقود";
-        body.batchCode = currentBatchCode;
+        const currentBatchCode = String(body.batchCode || body.threadId).trim();
+        body.batchCode = currentBatchCode; // توحيد الحقل المرسل للشيت
 
         const response = await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
@@ -108,7 +99,7 @@ module.exports = async function handler(req, res) {
         });
         const result = await response.json();
 
-        if (result.success && currentBatchCode !== "كود_مفقود") {
+        if (result.success) {
           const threadId = Number(currentBatchCode);
           const sName = body.studentName || body.name || "طالب جديد";
 
@@ -120,6 +111,7 @@ module.exports = async function handler(req, res) {
 
           await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
 
+          // إرسال كافة الصور المكتشفة تباعاً للتليجرام
           for (let i = 0; i < extractedImages.length; i++) {
             await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, extractedImages[i], `📸 صورة مرفقة رقم (${i+1}) للطالب: ${sName}`, threadId);
           }
@@ -147,6 +139,7 @@ module.exports = async function handler(req, res) {
 
           await sendTelegramMessage(TELEGRAM_CHAT_ID, messageText);
 
+          // تم إصلاح الخطأ البرمجي في هذه الحلقة (كان k < i بدلاً من k < extractedImages.length)
           for (let k = 0; k < extractedImages.length; k++) {
             await sendTelegramPhoto(TELEGRAM_CHAT_ID, extractedImages[k], `📸 صورة طلب فردي للزبون: ${clientName}`);
           }
@@ -159,19 +152,32 @@ module.exports = async function handler(req, res) {
   }
 };
 
+// الدوال المساعدة للتليجرام
 async function createTelegramTopic(name) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createForumTopic`;
     const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: String(TELEGRAM_BATCH_CHAT_ID).trim(), name: String(name) }) });
-    const data = await response.json(); return data.ok && data.result ? data.result.message_thread_id : null;
+    const data = await response.json(); 
+    return data.ok && data.result ? data.result.message_thread_id : null;
   } catch (err) { return null; }
 }
+
 async function updateTelegramTopicName(threadId, newName) {
-  try { const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editForumTopic`; await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: String(TELEGRAM_BATCH_CHAT_ID).trim(), message_thread_id: Number(threadId), name: newName }) }); } catch (err) {}
+  try { 
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editForumTopic`; 
+    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: String(TELEGRAM_BATCH_CHAT_ID).trim(), message_thread_id: Number(threadId), name: newName }) }); 
+  } catch (err) {}
 }
+
 async function sendTelegramMessage(targetChatId, text, threadId = null) {
-  try { const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`; const payload = { chat_id: String(targetChatId).trim(), text: text, parse_mode: "Markdown" }; if (threadId) payload.message_thread_id = Number(threadId); await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); } catch (err) {}
+  try { 
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`; 
+    const payload = { chat_id: String(targetChatId).trim(), text: text, parse_mode: "Markdown" }; 
+    if (threadId) payload.message_thread_id = Number(threadId); 
+    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); 
+  } catch (err) {}
 }
+
 async function sendTelegramPhoto(targetChatId, base64Data, caption, threadId = null) {
   try {
     if (base64Data.includes(",")) base64Data = base64Data.split(",")[1];

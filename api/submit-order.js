@@ -139,7 +139,7 @@ module.exports = async function handler(req, res) {
 
           await sendTelegramMessage(TELEGRAM_CHAT_ID, messageText);
 
-          // تم إصلاح الخطأ البرمجي في هذه الحلقة (كان k < i بدلاً من k < extractedImages.length)
+          // تم إصلاح الخطأ البرمجي في هذه الحلقة بالاعتماد على extractedImages.length
           for (let k = 0; k < extractedImages.length; k++) {
             await sendTelegramPhoto(TELEGRAM_CHAT_ID, extractedImages[k], `📸 صورة طلب فردي للزبون: ${clientName}`);
           }

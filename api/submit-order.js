@@ -1,4 +1,4 @@
-// api/submit-order.js (إصدار المزامنة الرقمية التامة وفصل الصفحات)
+// api/submit-order.js (الإصدار النهائي الشامل لدعم شعار الجامعة وتوحيد الأكواد الرقمية)
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL; 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
 const TELEGRAM_BATCH_CHAT_ID = process.env.TELEGRAM_BATCH_CHAT_ID; 
@@ -32,22 +32,21 @@ module.exports = async function handler(req, res) {
       };
 
       // ----------------------------------------------------
-      // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
+      // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH) + دعم الشعار
       // ----------------------------------------------------
       if (body.actionType === "CREATE_BATCH") {
         const topicName = `${body.uniName || 'دفعة'} - ${body.repName || 'جديدة'}`;
         const threadId = await createTelegramTopic(topicName);
 
         if (!threadId) {
-          return res.status(500).json({ success: false, error: "فشل إنشاء توبك التليجرام" });
+          return res.status(500).json({ success: false, error: "فشل تليجرام في إنشاء التوبك للمجموعة" });
         }
 
-        // تثبيت الكود ليكون هو الـ Thread ID في الشيت والتليجرام والفرونت إند بدون أي تباين
         const finalNumericCode = String(threadId);
         body.batchCode = finalNumericCode;
         body.threadId = finalNumericCode;
 
-        // الحفظ في جوجل شيت
+        // إرسال البيانات لجوجل شيت ليرفع الشعار ويخزن الصف
         const response = await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -55,7 +54,7 @@ module.exports = async function handler(req, res) {
         });
         const result = await response.json();
 
-        // إرسال الإشعار للتليجرام
+        // إشعار نصي لتليجرام داخل التوبك
         const messageText = `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
                             `🔢 *كود الدفعة الموحد:* \`${finalNumericCode}\`\n` +
                             `👤 *الممثل:* ${cleanText(body.repName)}\n` +
@@ -66,8 +65,22 @@ module.exports = async function handler(req, res) {
         await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
         await updateTelegramTopicName(threadId, `دفعة رقم: ${finalNumericCode}`);
 
-        result.batchCode = finalNumericCode;
-        return res.status(response.status).json(result);
+        // محاولة استخراج شعار الجامعة من الحقول المحتملة وإرساله لتليجرام
+        const batchImgs = body.images || {};
+        let uniLogoBase64 = body.uniLogoImg || batchImgs.uniLogoImg || (batchImgs.logo && batchImgs.logo.base64);
+        if (typeof uniLogoBase64 === 'object' && uniLogoBase64.base64) uniLogoBase64 = uniLogoBase64.base64;
+
+        if (uniLogoBase64) {
+          const logoCaption = `📸 شعار الجامعة الرسمي المعتمد لدفعة رقم: ${finalNumericCode}`;
+          await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, uniLogoBase64, logoCaption, threadId);
+        }
+
+        // إرجاع النتيجة للفرونت إند لتحديث حقل الكود على الواجهة فوراً
+        return res.status(200).json({
+          success: true,
+          batchCode: finalNumericCode,
+          message: "تم تأسيس الدفعة وحفظ الشعار بنجاح!"
+        });
       }
 
       // ----------------------------------------------------
@@ -102,7 +115,7 @@ module.exports = async function handler(req, res) {
             };
             for (const [key, imgObj] of Object.entries(body.images)) {
               if (imgObj && imgObj.base64) {
-                const caption = `📸 ${labels[key] || "صورة مرفقة"} للجلوس: ${body.studentName}`;
+                const caption = `📸 ${labels[key] || "صورة مرفقة"} للطالب: ${body.studentName}`;
                 await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgObj.base64, caption, threadId);
               }
             }
@@ -200,7 +213,7 @@ async function sendTelegramPhoto(targetChatId, base64Data, caption, threadId = n
     formData.append('caption', caption);
     if (threadId) formData.append('message_thread_id', String(threadId));
     const blob = new Blob([buffer], { type: 'image/jpeg' });
-    formData.append('photo', blob, 'design.jpg');
+    formData.append('photo', blob, 'logo.jpg');
     await fetch(url, { method: "POST", body: formData });
   } catch (err) {}
 }

@@ -28,23 +28,63 @@ module.exports = async function handler(req, res) {
 
       const cleanText = (str) => (!str ? "غير متوفر" : String(str).replace(/[_*`\[\]()]/g, "\\$&"));
 
-      const prepareImagesObject = (rawImages, fallbackBase64 = null) => {
-        let formatted = {};
-        if (rawImages && typeof rawImages === 'object') {
-          const keys = ['sashFixedImg', 'sashBackImg', 'capTopImg', 'capSideImg', 'logoImg', 'logo', 'uniLogo'];
-          keys.forEach(k => {
-            if (rawImages[k]) {
-              formatted[k] = typeof rawImages[k] === 'object' ? rawImages[k].base64 : rawImages[k];
+      // 🎯 محرك استخراج الصور الشامل (يقرأ بكافة الطرق والأشكال)
+      const parseAllImages = (data) => {
+        let result = {};
+        const possibleKeys = {
+          logoImg: ['logoImg', 'logo', 'uniLogo', 'universityLogo', 'base64', 'file'],
+          sashFixedImg: ['sashFixedImg', 'sashFixed', 'fixedImg', 'fixed'],
+          sashBackImg: ['sashBackImg', 'sashBack', 'backImg', 'back'],
+          capTopImg: ['capTopImg', 'capTop', 'topImg', 'top'],
+          capSideImg: ['capSideImg', 'capSide', 'sideImg', 'side']
+        };
+
+        const extractBase64 = (val) => {
+          if (!val) return null;
+          if (typeof val === 'string' && val.length > 50) return val;
+          if (typeof val === 'object') return val.base64 || val.data || val.url || null;
+          return null;
+        };
+
+        // 1. البحث في كائن data.images
+        if (data.images && typeof data.images === 'object' && !Array.isArray(data.images)) {
+          for (let target in possibleKeys) {
+            for (let alias of possibleKeys[target]) {
+              let val = extractBase64(data.images[alias]);
+              if (val) { result[target] = val; break; }
+            }
+          }
+        }
+
+        // 2. البحث في مصفوفة data.images
+        if (data.images && Array.isArray(data.images)) {
+          data.images.forEach(item => {
+            let itemKey = item.key || item.name || item.type || item.label || "";
+            let itemVal = extractBase64(item.base64 || item.data || item.val || item);
+            if (itemKey && itemVal) {
+              for (let target in possibleKeys) {
+                if (possibleKeys[target].some(k => itemKey.toLowerCase().includes(k.toLowerCase()))) {
+                  result[target] = itemVal;
+                }
+              }
             }
           });
         }
-        if (fallbackBase64 && !formatted.logoImg) {
-          formatted.logoImg = fallbackBase64;
+
+        // 3. البحث المباشر في data
+        for (let target in possibleKeys) {
+          if (!result[target]) {
+            for (let alias of possibleKeys[target]) {
+              let val = extractBase64(data[alias]);
+              if (val) { result[target] = val; break; }
+            }
+          }
         }
-        return formatted;
+
+        return result;
       };
 
-      const imagesObj = prepareImagesObject(body.images, body.base64);
+      const imagesObj = parseAllImages(body);
 
       // ----------------------------------------------------
       // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
@@ -53,14 +93,12 @@ module.exports = async function handler(req, res) {
         const topicName = `${body.uniName || 'دفعة جديدة'} - ${body.repName || ''}`;
         const threadId = await createTelegramTopic(topicName);
 
-        if (!threadId) return res.status(500).json({ success: false, error: "فشل إنشاء التوبك في تليجرام" });
-
-        const finalBatchCode = String(body.batchCode || body.code || threadId).trim();
+        const finalBatchCode = String(body.batchCode || body.code || threadId || "BATCH").trim();
 
         const cleanPayload = {
           actionType: "CREATE_BATCH",
           batchCode: finalBatchCode,
-          threadId: threadId,
+          threadId: threadId || finalBatchCode,
           repName: body.repName || body.name || "",
           repPhone: body.repPhone || body.phone || "",
           uniName: body.uniName || body.university || "",
@@ -72,7 +110,7 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        // ⚡ 1. إرسال التليجرام أولاً وبسرعة فائقة
+        // ⚡ 1. إرسال التليجرام أولاً
         const messageText = `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
                             `🔢 *كود الدفعة الموحد:* \`${finalBatchCode}\`\n` +
                             `👤 *الممثل:* ${cleanText(cleanPayload.repName)}\n` +
@@ -85,12 +123,11 @@ module.exports = async function handler(req, res) {
 
         await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
 
-        const logoBase64 = imagesObj.logoImg || imagesObj.logo || imagesObj.uniLogo;
-        if (logoBase64) {
-          await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, logoBase64, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, threadId);
+        if (imagesObj.logoImg) {
+          await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, threadId);
         }
 
-        // 📊 2. إرسال البيانات لشيت جوجل بعد التليجرام
+        // 📊 2. إرسال لكوكل شيت
         try {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
@@ -99,7 +136,7 @@ module.exports = async function handler(req, res) {
           });
         } catch (e) { console.error("Sheet Error:", e); }
 
-        return res.status(200).json({ success: true, batchCode: finalBatchCode, code: finalBatchCode, threadId: finalBatchCode });
+        return res.status(200).json({ success: true, batchCode: finalBatchCode, code: finalBatchCode, threadId: threadId || finalBatchCode });
       }
 
       // ----------------------------------------------------
@@ -129,9 +166,9 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        const threadId = Number(currentBatchCode);
+        const threadId = currentBatchCode;
 
-        // ⚡ 1. إرسال بيانات وصور الطالب للتليجرام أولاً
+        // ⚡ 1. إرسال التليجرام أولاً
         const messageText = `🤝 *انضمام طالب جديد للدفعة!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(sName)}
@@ -140,6 +177,7 @@ module.exports = async function handler(req, res) {
 ----------------------------------
 ✍️ *التطريز:*
 ✨ *الوشاح:* ${cleanText(cleanPayload.sashText)}
+📌 *الطرف الثابت:* ${cleanText(cleanPayload.sashFixedText || "لا يوجد")}
 🎨 *الظهر:* ${cleanText(cleanPayload.sashBackText || "لا يوجد")}
 🎩 *فوق القبعة:* ${cleanText(cleanPayload.capTopText || "لا يوجد")}
 🧢 *جانب القبعة:* ${cleanText(cleanPayload.capSideText || "لا يوجد")}
@@ -155,12 +193,12 @@ module.exports = async function handler(req, res) {
         };
 
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
-          if (imgBase64 && k !== 'logoImg' && k !== 'logo') {
+          if (imgBase64 && k !== 'logoImg') {
             await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, threadId);
           }
         }
 
-        // 📊 2. إرسال البيانات لكوكل شيت بعد التليجرام
+        // 📊 2. إرسال لكوكل شيت
         try {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
@@ -199,7 +237,6 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        // ⚡ 1. إرسال للتليجرام أولاً
         const messageText = `🛍️ *طلب فردي جديد بالكامل!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(studentName)}
@@ -233,7 +270,6 @@ module.exports = async function handler(req, res) {
           }
         }
 
-        // 📊 2. إرسال لكوكل شيت بعد التليجرام
         try {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
@@ -251,6 +287,12 @@ module.exports = async function handler(req, res) {
   }
 };
 
+function getValidThreadId(val) {
+  if (!val) return null;
+  const num = Number(val);
+  return (!isNaN(num) && num > 0) ? num : null;
+}
+
 async function createTelegramTopic(name) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createForumTopic`;
@@ -263,23 +305,46 @@ async function createTelegramTopic(name) {
 async function sendTelegramMessage(targetChatId, text, threadId = null) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const validThread = getValidThreadId(threadId);
     const payload = { chat_id: String(targetChatId).trim(), text: text, parse_mode: "Markdown" };
-    if (threadId) payload.message_thread_id = Number(threadId);
-    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (validThread) payload.message_thread_id = validThread;
+
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    
+    // 🛡️ التراجع التلقائي: إذا فشل الإرسال للتوبك، أرسل للمجموعة الرئيسية فوراً
+    if (!data.ok && validThread) {
+      delete payload.message_thread_id;
+      await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    }
   } catch (err) {}
 }
 
 async function sendTelegramPhoto(targetChatId, base64Data, caption, threadId = null) {
   try {
+    if (!base64Data || typeof base64Data !== 'string' || base64Data.length < 50) return;
     if (base64Data.includes(",")) base64Data = base64Data.split(",")[1];
+    
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
     const buffer = Buffer.from(base64Data, 'base64');
+    const validThread = getValidThreadId(threadId);
+    
     const formData = new FormData();
     formData.append('chat_id', String(targetChatId).trim());
     formData.append('caption', caption);
-    if (threadId) formData.append('message_thread_id', String(threadId));
-    const blob = new Blob([buffer], { type: 'image/jpeg' });
-    formData.append('photo', blob, 'image.jpg');
-    await fetch(url, { method: "POST", body: formData });
+    if (validThread) formData.append('message_thread_id', String(validThread));
+    formData.append('photo', new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
+
+    const res = await fetch(url, { method: "POST", body: formData });
+    const data = await res.json();
+
+    // 🛡️ التراجع التلقائي للصورة
+    if (!data.ok && validThread) {
+      const formData2 = new FormData();
+      formData2.append('chat_id', String(targetChatId).trim());
+      formData2.append('caption', caption);
+      formData2.append('photo', new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
+      await fetch(url, { method: "POST", body: formData2 });
+    }
   } catch (err) {}
 }

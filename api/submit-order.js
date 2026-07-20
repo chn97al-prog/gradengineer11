@@ -137,7 +137,6 @@ module.exports = async function handler(req, res) {
 👤 *اسم الطالب:* ${cleanText(sName)}
 📞 *الهاتف:* ${cleanText(cleanPayload.phone)}
 🔢 *كود الدفعة:* \`${currentBatchCode}\`
-🎗️ *قصة الوشاح:* ${cleanText(cleanPayload.sashSelected)}
 ----------------------------------
 ✍️ *التطريز:*
 ✨ *الوشاح:* ${cleanText(cleanPayload.sashText)}
@@ -208,7 +207,6 @@ module.exports = async function handler(req, res) {
 
 🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}
 🧵 *نوع القماش:* ${cleanText(cleanPayload.batchFabric)}
-🎗️ *قصة الوشاح:* ${cleanText(cleanPayload.sashSelected)}
 ----------------------------------
 📏 *القياسات الدقيقة (سم):*
 • طول الروب: \`${cleanText(cleanPayload.lengthGown)}\` سم

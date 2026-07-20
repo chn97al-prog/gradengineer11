@@ -23,65 +23,35 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      let body = req.body;
-      if (typeof body === "string") body = JSON.parse(body);
+      let body = req.body || {};
+      if (typeof body === "string") {
+        try { body = JSON.parse(body); } catch (e) {}
+      }
 
       const cleanText = (str) => (!str ? "غير متوفر" : String(str).replace(/[_*`\[\]()]/g, "\\$&"));
 
-      // 🎯 محرك استخراج الصور
-      const parseAllImages = (data) => {
-        let result = {};
-        const possibleKeys = {
-          logoImg: ['logoImg', 'logo', 'uniLogo', 'universityLogo', 'base64', 'file'],
-          sashFixedImg: ['sashFixedImg', 'sashFixed', 'fixedImg', 'fixed'],
-          sashBackImg: ['sashBackImg', 'sashBack', 'backImg', 'back'],
-          capTopImg: ['capTopImg', 'capTop', 'topImg', 'top'],
-          capSideImg: ['capSideImg', 'capSide', 'sideImg', 'side']
-        };
-
-        const extractBase64 = (val) => {
-          if (!val) return null;
-          if (typeof val === 'string' && val.length > 50) return val;
-          if (typeof val === 'object') return val.base64 || val.data || val.url || null;
-          return null;
-        };
-
-        if (data.images && typeof data.images === 'object' && !Array.isArray(data.images)) {
-          for (let target in possibleKeys) {
-            for (let alias of possibleKeys[target]) {
-              let val = extractBase64(data.images[alias]);
-              if (val) { result[target] = val; break; }
+      // 🎯 استخراج الصور بأمان بدون أخطاء
+      const parseImages = (data) => {
+        let res = {};
+        try {
+          let raw = data.images || data;
+          if (typeof raw === 'object' && !Array.isArray(raw)) {
+            res.logoImg = raw.logoImg || raw.logo || raw.uniLogo || data.logoImg || data.logo || null;
+            res.sashFixedImg = raw.sashFixedImg || raw.sashFixed || data.sashFixedImg || null;
+            res.sashBackImg = raw.sashBackImg || raw.sashBack || data.sashBackImg || null;
+            res.capTopImg = raw.capTopImg || raw.capTop || data.capTopImg || null;
+            res.capSideImg = raw.capSideImg || raw.capSide || data.capSideImg || null;
+          }
+          for (let key in res) {
+            if (res[key] && typeof res[key] === 'object') {
+              res[key] = res[key].base64 || res[key].data || res[key].url || null;
             }
           }
-        }
-
-        if (data.images && Array.isArray(data.images)) {
-          data.images.forEach(item => {
-            let itemKey = item.key || item.name || item.type || item.label || "";
-            let itemVal = extractBase64(item.base64 || item.data || item.val || item);
-            if (itemKey && itemVal) {
-              for (let target in possibleKeys) {
-                if (possibleKeys[target].some(k => itemKey.toLowerCase().includes(k.toLowerCase()))) {
-                  result[target] = itemVal;
-                }
-              }
-            }
-          });
-        }
-
-        for (let target in possibleKeys) {
-          if (!result[target]) {
-            for (let alias of possibleKeys[target]) {
-              let val = extractBase64(data[alias]);
-              if (val) { result[target] = val; break; }
-            }
-          }
-        }
-
-        return result;
+        } catch(e) {}
+        return res;
       };
 
-      const imagesObj = parseAllImages(body);
+      const imagesObj = parseImages(body);
 
       // ----------------------------------------------------
       // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
@@ -89,7 +59,6 @@ module.exports = async function handler(req, res) {
       if (body.actionType === "CREATE_BATCH") {
         const topicName = `${body.uniName || 'دفعة جديدة'} - ${body.repName || ''}`;
         const threadId = await createTelegramTopic(topicName);
-
         const finalBatchCode = String(body.batchCode || body.code || threadId || "BATCH").trim();
 
         const cleanPayload = {
@@ -107,31 +76,32 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        const messageText = `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
-                            `🔢 *كود الدفعة الموحد:* \`${finalBatchCode}\`\n` +
-                            `👤 *الممثل:* ${cleanText(cleanPayload.repName)}\n` +
-                            `📞 *الهاتف:* ${cleanText(cleanPayload.repPhone)}\n` +
-                            `🏫 *الجامعة:* ${cleanText(cleanPayload.uniName)} - ${cleanText(cleanPayload.collName)}\n` +
-                            `🏛️ *القسم:* ${cleanText(cleanPayload.deptName)}\n` +
-                            `👥 *عدد الطلاب المتوقع:* ${cleanText(cleanPayload.studentCount)}\n` +
-                            `🎨 *الموديل المعتمد:* ${cleanText(cleanPayload.batchModel)}\n` +
-                            `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
+        const msg = `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
+                    `🔢 *كود الدفعة الموحد:* \`${finalBatchCode}\`\n` +
+                    `👤 *الممثل:* ${cleanText(cleanPayload.repName)}\n` +
+                    `📞 *الهاتف:* ${cleanText(cleanPayload.repPhone)}\n` +
+                    `🏫 *الجامعة:* ${cleanText(cleanPayload.uniName)} - ${cleanText(cleanPayload.collName)}\n` +
+                    `🏛️ *القسم:* ${cleanText(cleanPayload.deptName)}\n` +
+                    `👥 *العدد المتوقع:* ${cleanText(cleanPayload.studentCount)}\n` +
+                    `🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}\n` +
+                    `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
 
-        await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
+        try { await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, threadId); } catch(e){}
 
         if (imagesObj.logoImg) {
-          await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, threadId);
+          try { await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, threadId); } catch(e){}
         }
 
+        // إرسال لكوكل شيت
         try {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cleanPayload),
+            body: JSON.stringify(cleanPayload)
           });
         } catch (e) { console.error("Sheet Error:", e); }
 
-        return res.status(200).json({ success: true, batchCode: finalBatchCode, code: finalBatchCode, threadId: threadId || finalBatchCode });
+        return res.status(200).json({ success: true, batchCode: finalBatchCode, threadId: threadId || finalBatchCode });
       }
 
       // ----------------------------------------------------
@@ -141,18 +111,9 @@ module.exports = async function handler(req, res) {
         const currentBatchCode = String(body.batchCode || body.threadId || "").trim();
         const sName = body.studentName || body.name || "طالب جديد";
 
-        let realThreadId = body.threadId || body.batchCode;
-
-        // 🔍 استعلام تلقائي لجلب رقم التوبك الحقيقي من كوكل شيت إذا لم يكن رقماً صريحاً
-        if (!getValidThreadId(realThreadId)) {
-          try {
-            const vRes = await fetch(`${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(currentBatchCode)}`);
-            const vData = await vRes.json();
-            if (vData.success && vData.batchData && vData.batchData.threadId) {
-              realThreadId = vData.batchData.threadId;
-            }
-          } catch(e) {}
-        }
+        // تحديد رقم التوبك بشكل مباشر وأمن
+        const rawThread = body.threadId || body.batchCode;
+        const threadId = (!isNaN(Number(rawThread)) && Number(rawThread) > 0) ? Number(rawThread) : null;
 
         const cleanPayload = {
           actionType: "JOIN_BATCH",
@@ -174,24 +135,23 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        const messageText = `🤝 *انضمام طالب جديد للدفعة!*
+        const msg = `🤝 *انضمام طالب جديد للدفعة!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(sName)}
 📞 *الهاتف:* ${cleanText(cleanPayload.phone)}
-🔢 *كود الدفعة:* \`${currentBatchCode}\`
 ----------------------------------
 ✍️ *التطريز:*
 ✨ *الوشاح:* ${cleanText(cleanPayload.sashText)}
-📌 *الطرف الثابت:* ${cleanText(cleanPayload.sashFixedText || "لا يوجد")}
 🎨 *الظهر:* ${cleanText(cleanPayload.sashBackText || "لا يوجد")}
 🎩 *فوق القبعة:* ${cleanText(cleanPayload.capTopText || "لا يوجد")}
 🧢 *جانب القبعة:* ${cleanText(cleanPayload.capSideText || "لا يوجد")}
 
 ➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
 
-        // إرسال للتوبك المحدد حصراً
-        await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, realThreadId);
+        // 1. إرسال النص للتليجرام
+        try { await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, threadId); } catch(e){}
 
+        // 2. إرسال صور الطالب للتليجرام
         const labelMap = { 
           sashBackImg: 'صورة ظهر الوشاح', 
           capTopImg: 'صورة فوق القبعة', 
@@ -200,15 +160,16 @@ module.exports = async function handler(req, res) {
 
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
           if (imgBase64 && k !== 'logoImg') {
-            await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, realThreadId);
+            try { await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, threadId); } catch(e){}
           }
         }
 
+        // 3. إرسال لكوكل شيت
         try {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cleanPayload),
+            body: JSON.stringify(cleanPayload)
           });
         } catch (e) { console.error("Sheet Error:", e); }
 
@@ -242,7 +203,7 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        const messageText = `🛍️ *طلب فردي جديد بالكامل!*
+        const msg = `🛍️ *طلب فردي جديد بالكامل!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(studentName)}
 📞 *رقم الهاتف:* ${cleanText(cleanPayload.phone)}
@@ -266,12 +227,12 @@ module.exports = async function handler(req, res) {
 
 ➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
 
-        await sendTelegramMessage(TELEGRAM_CHAT_ID, messageText);
+        try { await sendTelegramMessage(TELEGRAM_CHAT_ID, msg); } catch(e){}
 
         const labelMap = { sashFixedImg: 'صورة الطرف الثابت', sashBackImg: 'صورة ظهر الوشاح', capTopImg: 'صورة فوق القبعة', capSideImg: 'صورة جانب القبعة' };
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
           if (imgBase64 && k !== 'logoImg') {
-            await sendTelegramPhoto(TELEGRAM_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${studentName}`);
+            try { await sendTelegramPhoto(TELEGRAM_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${studentName}`); } catch(e){}
           }
         }
 
@@ -279,7 +240,7 @@ module.exports = async function handler(req, res) {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cleanPayload),
+            body: JSON.stringify(cleanPayload)
           });
         } catch (e) { console.error("Sheet Error:", e); }
 
@@ -291,12 +252,6 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
-
-function getValidThreadId(val) {
-  if (!val) return null;
-  const num = Number(val);
-  return (!isNaN(num) && num > 0) ? num : null;
-}
 
 async function createTelegramTopic(name) {
   try {
@@ -310,11 +265,17 @@ async function createTelegramTopic(name) {
 async function sendTelegramMessage(targetChatId, text, threadId = null) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-    const validThread = getValidThreadId(threadId);
     const payload = { chat_id: String(targetChatId).trim(), text: text, parse_mode: "Markdown" };
-    if (validThread) payload.message_thread_id = validThread;
+    if (threadId && !isNaN(Number(threadId))) payload.message_thread_id = Number(threadId);
 
-    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    
+    // إذا فشل الإرسال داخل التوبك لأي سبب، أرسل فوراً في القناة العامة كي لا تضيع البيانات
+    if (!data.ok && payload.message_thread_id) {
+      delete payload.message_thread_id;
+      await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    }
   } catch (err) {}
 }
 
@@ -325,14 +286,22 @@ async function sendTelegramPhoto(targetChatId, base64Data, caption, threadId = n
     
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
     const buffer = Buffer.from(base64Data, 'base64');
-    const validThread = getValidThreadId(threadId);
     
     const formData = new FormData();
     formData.append('chat_id', String(targetChatId).trim());
     formData.append('caption', caption);
-    if (validThread) formData.append('message_thread_id', String(validThread));
+    if (threadId && !isNaN(Number(threadId))) formData.append('message_thread_id', Number(threadId));
     formData.append('photo', new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
 
-    await fetch(url, { method: "POST", body: formData });
+    const res = await fetch(url, { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (!data.ok && threadId) {
+      const formData2 = new FormData();
+      formData2.append('chat_id', String(targetChatId).trim());
+      formData2.append('caption', caption);
+      formData2.append('photo', new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
+      await fetch(url, { method: "POST", body: formData2 });
+    }
   } catch (err) {}
 }

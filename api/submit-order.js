@@ -28,21 +28,23 @@ module.exports = async function handler(req, res) {
 
       const cleanText = (str) => (!str ? "غير متوفر" : String(str).replace(/[_*`\[\]()]/g, "\\$&"));
 
-      // 🎯 دالة تنظيم الصور المرفوعة حسب المكان
-      const prepareImagesObject = (rawImages) => {
+      const prepareImagesObject = (rawImages, fallbackBase64 = null) => {
         let formatted = {};
-        if (!rawImages || typeof rawImages !== 'object') return formatted;
-
-        const keys = ['sashFixedImg', 'sashBackImg', 'capTopImg', 'capSideImg'];
-        keys.forEach(k => {
-          if (rawImages[k]) {
-            formatted[k] = typeof rawImages[k] === 'object' ? rawImages[k].base64 : rawImages[k];
-          }
-        });
+        if (rawImages && typeof rawImages === 'object') {
+          const keys = ['sashFixedImg', 'sashBackImg', 'capTopImg', 'capSideImg', 'logoImg', 'logo', 'uniLogo'];
+          keys.forEach(k => {
+            if (rawImages[k]) {
+              formatted[k] = typeof rawImages[k] === 'object' ? rawImages[k].base64 : rawImages[k];
+            }
+          });
+        }
+        if (fallbackBase64 && !formatted.logoImg) {
+          formatted.logoImg = fallbackBase64;
+        }
         return formatted;
       };
 
-      const imagesObj = prepareImagesObject(body.images);
+      const imagesObj = prepareImagesObject(body.images, body.base64);
 
       // ----------------------------------------------------
       // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
@@ -53,7 +55,6 @@ module.exports = async function handler(req, res) {
 
         if (!threadId) return res.status(500).json({ success: false, error: "فشل إنشاء التوبك في تليجرام" });
 
-        // نستخدم كود الدفعة المرسل من الموقع إن وجد، وإلا نعتمد رقم التوبك
         const finalBatchCode = String(body.batchCode || body.code || threadId).trim();
 
         const cleanPayload = {
@@ -71,6 +72,25 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
+        // ⚡ 1. إرسال التليجرام أولاً وبسرعة فائقة
+        const messageText = `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
+                            `🔢 *كود الدفعة الموحد:* \`${finalBatchCode}\`\n` +
+                            `👤 *الممثل:* ${cleanText(cleanPayload.repName)}\n` +
+                            `📞 *الهاتف:* ${cleanText(cleanPayload.repPhone)}\n` +
+                            `🏫 *الجامعة:* ${cleanText(cleanPayload.uniName)} - ${cleanText(cleanPayload.collName)}\n` +
+                            `🏛️ *القسم:* ${cleanText(cleanPayload.deptName)}\n` +
+                            `👥 *عدد الطلاب المتوقع:* ${cleanText(cleanPayload.studentCount)}\n` +
+                            `🎨 *الموديل المعتمد:* ${cleanText(cleanPayload.batchModel)}\n` +
+                            `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
+
+        await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
+
+        const logoBase64 = imagesObj.logoImg || imagesObj.logo || imagesObj.uniLogo;
+        if (logoBase64) {
+          await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, logoBase64, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, threadId);
+        }
+
+        // 📊 2. إرسال البيانات لشيت جوجل بعد التليجرام
         try {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
@@ -79,17 +99,7 @@ module.exports = async function handler(req, res) {
           });
         } catch (e) { console.error("Sheet Error:", e); }
 
-        const messageText = `👑 *تم تأسيس دفعة جديدة بنجاح!*\n\n` +
-                            `🔢 *كود الدفعة:* \`${finalBatchCode}\`\n` +
-                            `👤 *الممثل:* ${cleanText(cleanPayload.repName)}\n` +
-                            `📞 *الهاتف:* ${cleanText(cleanPayload.repPhone)}\n` +
-                            `🏫 *الجامعة:* ${cleanText(cleanPayload.uniName)} - ${cleanText(cleanPayload.collName)}\n` +
-                            `🎨 *الموديل المعتمد:* ${cleanText(cleanPayload.batchModel)}\n` +
-                            `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
-
-        await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
-
-        return res.status(200).json({ success: true, batchCode: finalBatchCode, code: finalBatchCode });
+        return res.status(200).json({ success: true, batchCode: finalBatchCode, code: finalBatchCode, threadId: finalBatchCode });
       }
 
       // ----------------------------------------------------
@@ -97,11 +107,19 @@ module.exports = async function handler(req, res) {
       // ----------------------------------------------------
       if (body.actionType === "JOIN_BATCH") {
         const currentBatchCode = String(body.batchCode || body.threadId || "").trim();
+        const sName = body.studentName || body.name || "طالب جديد";
 
         const cleanPayload = {
           actionType: "JOIN_BATCH",
           batchCode: currentBatchCode,
-          studentName: body.studentName || body.name || "",
+          studentName: sName,
+          phone: body.phone || body.studentPhone || "غير متوفر",
+          sashSelected: body.sashSelected || "غير محدد",
+          lengthGown: body.lengthGown || "0",
+          lengthSleeve: body.lengthSleeve || "0",
+          shoulder: body.shoulder || "0",
+          chest: body.chest || "0",
+          head: body.head || "0",
           sashText: body.sashText || "",
           sashFixedText: body.sashFixedText || "",
           sashBackText: body.sashBackText || body.sashBack || "",
@@ -111,6 +129,39 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
+        const threadId = Number(currentBatchCode);
+
+        // ⚡ 1. إرسال بيانات وصور الطالب للتليجرام أولاً
+        const messageText = `🤝 *انضمام طالب جديد للدفعة!*
+----------------------------------
+👤 *اسم الطالب:* ${cleanText(sName)}
+📞 *الهاتف:* ${cleanText(cleanPayload.phone)}
+🔢 *كود الدفعة:* \`${currentBatchCode}\`
+🎗️ *قصة الوشاح:* ${cleanText(cleanPayload.sashSelected)}
+----------------------------------
+✍️ *التطريز:*
+✨ *الوشاح:* ${cleanText(cleanPayload.sashText)}
+🎨 *الظهر:* ${cleanText(cleanPayload.sashBackText || "لا يوجد")}
+🎩 *فوق القبعة:* ${cleanText(cleanPayload.capTopText || "لا يوجد")}
+🧢 *جانب القبعة:* ${cleanText(cleanPayload.capSideText || "لا يوجد")}
+
+➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
+
+        await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
+
+        const labelMap = { 
+          sashBackImg: 'صورة ظهر الوشاح', 
+          capTopImg: 'صورة فوق القبعة', 
+          capSideImg: 'صورة جانب القبعة' 
+        };
+
+        for (const [k, imgBase64] of Object.entries(imagesObj)) {
+          if (imgBase64 && k !== 'logoImg' && k !== 'logo') {
+            await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, threadId);
+          }
+        }
+
+        // 📊 2. إرسال البيانات لكوكل شيت بعد التليجرام
         try {
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
@@ -119,30 +170,11 @@ module.exports = async function handler(req, res) {
           });
         } catch (e) { console.error("Sheet Error:", e); }
 
-        const threadId = Number(currentBatchCode);
-        const sName = cleanPayload.studentName || "طالب جديد";
-
-        const messageText = `🤝 *طالب جديد انضم للدفعة:* ${cleanText(sName)}\n` +
-                            `🔢 *كود الدفعة:* \`${currentBatchCode}\`\n` +
-                            `✨ *التطريز:* ${cleanText(cleanPayload.sashText)}\n` +
-                            `📌 *الطرف الثابت:* ${cleanText(cleanPayload.sashFixedText || "لا يوجد")}\n` +
-                            `🎨 *الظهر:* ${cleanText(cleanPayload.sashBackText || "لا يوجد")}\n` +
-                            `➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
-
-        await sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, messageText, threadId);
-
-        const labelMap = { sashFixedImg: 'صورة الطرف الثابت', sashBackImg: 'صورة ظهر الوشاح', capTopImg: 'صورة فوق القبعة', capSideImg: 'صورة جانب القبعة' };
-        for (const [k, imgBase64] of Object.entries(imagesObj)) {
-          if (imgBase64) {
-            await sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, threadId);
-          }
-        }
-
         return res.status(200).json({ success: true });
       }
 
       // ----------------------------------------------------
-      // الحالة ج: طلب فردي كامل (SINGLE_ORDER)
+      // الحالة ج: طلب فردي (SINGLE_ORDER)
       // ----------------------------------------------------
       if (["SINGLE_ORDER", "INDIVIDUAL_ORDER"].includes(body.actionType)) {
         const studentName = body.studentName || "طالب مجهول";
@@ -168,14 +200,7 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        try {
-          await fetch(GOOGLE_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cleanPayload),
-          });
-        } catch (e) { console.error("Sheet Error:", e); }
-
+        // ⚡ 1. إرسال للتليجرام أولاً
         const messageText = `🛍️ *طلب فردي جديد بالكامل!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(studentName)}
@@ -205,10 +230,19 @@ module.exports = async function handler(req, res) {
 
         const labelMap = { sashFixedImg: 'صورة الطرف الثابت', sashBackImg: 'صورة ظهر الوشاح', capTopImg: 'صورة فوق القبعة', capSideImg: 'صورة جانب القبعة' };
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
-          if (imgBase64) {
+          if (imgBase64 && k !== 'logoImg') {
             await sendTelegramPhoto(TELEGRAM_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${studentName}`);
           }
         }
+
+        // 📊 2. إرسال لكوكل شيت بعد التليجرام
+        try {
+          await fetch(GOOGLE_SCRIPT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(cleanPayload),
+          });
+        } catch (e) { console.error("Sheet Error:", e); }
 
         return res.status(200).json({ success: true });
       }

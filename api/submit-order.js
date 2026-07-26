@@ -72,12 +72,12 @@ module.exports = async function handler(req, res) {
         const threadId = await createTelegramTopic(topicName);
         
         // 2️⃣ الاعتماد الكلي على رقم التوبك كـ كود موحد للدفعة
-        const finalBatchCode = String(threadId || body.batchCode || body.code || "BATCH").trim();
+        const finalBatchCode = String(body.batchCode || body.code || "").trim();
 
         const cleanPayload = {
           actionType: "CREATE_BATCH",
           batchCode: finalBatchCode,
-          threadId: finalBatchCode,
+          threadId: threadId,
           repName: body.repName || body.name || "",
           repPhone: body.repPhone || body.phone || "",
           uniName: body.uniName || body.university || "",
@@ -106,11 +106,15 @@ module.exports = async function handler(req, res) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(cleanPayload)
           }),
-          sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, finalBatchCode)
+          sendTelegramMessage(
+    TELEGRAM_BATCH_CHAT_ID,
+    msg,
+    threadId
+)
         ];
 
         if (imagesObj.logoImg) {
-          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, finalBatchCode));
+          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${threadId}`, finalBatchCode));
         }
 
         await Promise.allSettled(tasks);

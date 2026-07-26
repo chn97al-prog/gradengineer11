@@ -12,25 +12,37 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(204).end();
 
   try {
+    // ----------------------------------------------------
+    // طلبات التحقق (GET)
+    // ----------------------------------------------------
     if (req.method === "GET") {
       const { actionType, batchCode } = req.query;
       if (actionType === "VERIFY_BATCH") {
         const cleanCode = String(batchCode || "").trim();
-        const response = await fetch(`${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(cleanCode)}`);
-        const result = await response.json();
-        return res.status(200).json(result);
+        try {
+          const response = await fetch(`${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(cleanCode)}`);
+          if (!response.ok) throw new Error("Google Script Error");
+          const result = await response.json();
+          return res.status(200).json(result);
+        } catch (err) {
+          return res.status(200).json({ success: false, message: "تعذر التحقق من الدفعة من سيرفر جوجل" });
+        }
       }
     }
 
+    // ----------------------------------------------------
+    // طلبات الإرسال (POST)
+    // ----------------------------------------------------
     if (req.method === "POST") {
       let body = req.body || {};
       if (typeof body === "string") {
         try { body = JSON.parse(body); } catch (e) {}
       }
 
+      // تنظيف النصوص لمنع كسر تنسيقات التليجرام (Markdown)
       const cleanText = (str) => (!str ? "غير متوفر" : String(str).replace(/[_*`\[\]()]/g, "\\$&"));
 
-      // 🎯 استخراج كافة الصور بأمان
+      // استخراج كافة الصور بأمان وتنظيفها
       const parseImages = (data) => {
         let resObj = {};
         try {
@@ -52,6 +64,19 @@ module.exports = async function handler(req, res) {
       };
 
       const imagesObj = parseImages(body);
+
+      // دالة ذكية لإرسال البيانات لجوجل بدون الحبس في مهلة Vercel (Timeout Limit)
+      const sendToGoogleWithTimeout = (payload) => {
+        return Promise.race([
+          fetch(GOOGLE_SCRIPT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          }),
+          // ننتظر 3.5 ثوانٍ كحد أقصى لاستلام جوجل للطلب لفك تعليق Vercel
+          new Promise(resolve => setTimeout(() => resolve({ ok: true, timeout: true }), 3500))
+        ]).catch(err => console.error("Google Fetch Error:", err));
+      };
 
       // ----------------------------------------------------
       // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
@@ -86,13 +111,8 @@ module.exports = async function handler(req, res) {
                     `🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}\n` +
                     `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
 
-        // تنفيذ الإرسال بالتوازي فائق السرعة
         const tasks = [
-          fetch(GOOGLE_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cleanPayload)
-          }),
+          sendToGoogleWithTimeout(cleanPayload),
           sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, threadId)
         ];
 
@@ -101,7 +121,6 @@ module.exports = async function handler(req, res) {
         }
 
         await Promise.allSettled(tasks);
-
         return res.status(200).json({ success: true, batchCode: finalBatchCode, threadId: threadId || finalBatchCode });
       }
 
@@ -112,7 +131,6 @@ module.exports = async function handler(req, res) {
         const currentBatchCode = String(body.batchCode || body.threadId || "").trim();
         const sName = body.studentName || body.name || "طالب جديد";
 
-        // البحث السريع عن رقم التوبك المباشر
         let realThreadId = body.threadId || null;
         if (!realThreadId && currentBatchCode) {
           if (!isNaN(Number(currentBatchCode)) && Number(currentBatchCode) > 0) {
@@ -163,16 +181,12 @@ module.exports = async function handler(req, res) {
 
 ➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
 
-        // تجهيز المهام للتنفيذ بالتوازي
         const tasks = [
-          fetch(GOOGLE_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cleanPayload)
-          }),
+          sendToGoogleWithTimeout(cleanPayload),
           sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, realThreadId)
         ];
 
+        // تم إضافة sashFixedImg الناقصة هنا
         const labelMap = { 
           sashBackImg: 'صورة ظهر الوشاح', 
           capTopImg: 'صورة فوق القبعة', 
@@ -185,9 +199,7 @@ module.exports = async function handler(req, res) {
           }
         }
 
-        // تنفيذ كل شيء بالتوازي الخاطف
         await Promise.allSettled(tasks);
-
         return res.status(200).json({ success: true });
       }
 
@@ -243,11 +255,7 @@ module.exports = async function handler(req, res) {
 ➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
 
         const tasks = [
-          fetch(GOOGLE_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cleanPayload)
-          }),
+          sendToGoogleWithTimeout(cleanPayload),
           sendTelegramMessage(TELEGRAM_CHAT_ID, msg)
         ];
 
@@ -259,7 +267,6 @@ module.exports = async function handler(req, res) {
         }
 
         await Promise.allSettled(tasks);
-
         return res.status(200).json({ success: true });
       }
     }
@@ -269,6 +276,7 @@ module.exports = async function handler(req, res) {
   }
 };
 
+// --- الدوال المساعدة للتليجرام ---
 async function createTelegramTopic(name) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createForumTopic`;
@@ -291,7 +299,6 @@ async function sendTelegramMessage(targetChatId, text, threadId = null) {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const data = await res.json();
     
-    // التراجع التلقائي: إذا فشل الإرسال داخل التوبك لأي سبب، يُرسل في القناة العامة
     if (!data.ok && payload.message_thread_id) {
       delete payload.message_thread_id;
       await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });

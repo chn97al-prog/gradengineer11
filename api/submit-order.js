@@ -130,19 +130,13 @@ module.exports = async function handler(req, res) {
         // رقم التوبك هو نفسه كود الدفعة دائماً
         const realThreadId = currentBatchCode;
 
+        // تم استبعاد (الهاتف - القياسات - الطرف الثابت)
         const cleanPayload = {
           actionType: "JOIN_BATCH",
           batchCode: currentBatchCode,
           studentName: sName,
-          phone: body.phone || body.studentPhone || "غير متوفر",
           sashSelected: body.sashSelected || "غير محدد",
-          lengthGown: body.lengthGown || "0",
-          lengthSleeve: body.lengthSleeve || "0",
-          shoulder: body.shoulder || "0",
-          chest: body.chest || "0",
-          head: body.head || "0",
           sashText: body.sashText || "",
-          sashFixedText: body.sashFixedText || "",
           sashBackText: body.sashBackText || body.sashBack || "",
           capTopText: body.capTopText || body.capTop || "",
           capSideText: body.capSideText || body.capSide || "",
@@ -153,7 +147,6 @@ module.exports = async function handler(req, res) {
         const msg = `🤝 *انضمام طالب جديد للدفعة!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(sName)}
-📞 *رقم الهاتف:* ${cleanText(cleanPayload.phone)}
 ----------------------------------
 ✍️ *التطريز:*
 ✨ *الوشاح:* ${cleanText(cleanPayload.sashText)}
@@ -183,7 +176,8 @@ module.exports = async function handler(req, res) {
         };
 
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
-          if (imgBase64 && k !== 'logoImg') {
+          // استبعاد صورة الشعار وصورة الطرف الثابت من رسائل انضمام الطالب للدفعة
+          if (imgBase64 && k !== 'logoImg' && k !== 'sashFixedImg') {
             telegramTasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, realThreadId));
           }
         }

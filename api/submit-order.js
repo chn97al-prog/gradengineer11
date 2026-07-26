@@ -20,7 +20,9 @@ module.exports = async function handler(req, res) {
       if (actionType === "VERIFY_BATCH") {
         const cleanCode = String(batchCode || "").trim();
         try {
-          const response = await fetch(`${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(cleanCode)}`);
+          const response = await fetch(`${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(cleanCode)}`, {
+            redirect: "follow"
+          });
           const result = await response.json();
           return res.status(200).json(result);
         } catch (err) {
@@ -72,12 +74,12 @@ module.exports = async function handler(req, res) {
         const threadId = await createTelegramTopic(topicName);
         
         // 2️⃣ الاعتماد الكلي على رقم التوبك كـ كود موحد للدفعة
-        const finalBatchCode = String(body.batchCode || body.code || "").trim();
+        const finalBatchCode = String(threadId || body.batchCode || body.code || "BATCH").trim();
 
         const cleanPayload = {
           actionType: "CREATE_BATCH",
           batchCode: finalBatchCode,
-          threadId: threadId,
+          threadId: finalBatchCode,
           repName: body.repName || body.name || "",
           repPhone: body.repPhone || body.phone || "",
           uniName: body.uniName || body.university || "",
@@ -103,18 +105,15 @@ module.exports = async function handler(req, res) {
         const tasks = [
           fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
+            redirect: "follow",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(cleanPayload)
           }),
-          sendTelegramMessage(
-    TELEGRAM_BATCH_CHAT_ID,
-    msg,
-    threadId
-)
+          sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, finalBatchCode)
         ];
 
         if (imagesObj.logoImg) {
-          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${threadId}`, finalBatchCode));
+          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, finalBatchCode));
         }
 
         await Promise.allSettled(tasks);
@@ -147,13 +146,14 @@ module.exports = async function handler(req, res) {
           sashBackText: body.sashBackText || body.sashBack || "",
           capTopText: body.capTopText || body.capTop || "",
           capSideText: body.capSideText || body.capSide || "",
-          additions: body.additions || "",
+          additions: body.additions || body.selectedAdditions || "لا توجد إضافات",
           images: imagesObj
         };
 
         const msg = `🤝 *انضمام طالب جديد للدفعة!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(sName)}
+📞 *رقم الهاتف:* ${cleanText(cleanPayload.phone)}
 ----------------------------------
 ✍️ *التطريز:*
 ✨ *الوشاح:* ${cleanText(cleanPayload.sashText)}
@@ -166,6 +166,7 @@ module.exports = async function handler(req, res) {
         // ننتظر وصول البيانات إلى Google Apps Script بشكل مؤكد
         await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
+          redirect: "follow",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(cleanPayload)
         }).catch(err => console.error("Google Save Error:", err));
@@ -200,7 +201,7 @@ module.exports = async function handler(req, res) {
         const cleanPayload = {
           actionType: "SINGLE_ORDER",
           studentName: studentName,
-          phone: body.phone || "غير متوفر",
+          phone: body.phone || body.studentPhone || "غير متوفر",
           batchModel: body.batchModel || "غير محدد",
           batchFabric: body.batchFabric || "غير محدد",
           sashSelected: body.sashSelected || "لا ينطبق",
@@ -214,7 +215,7 @@ module.exports = async function handler(req, res) {
           sashBackText: body.sashBackText || "لم يكتب شيء",
           capTopText: body.capTopText || "لم يكتب شيء",
           capSideText: body.capSideText || "لم يكتب شيء",
-          additions: body.additions || "لا توجد إضافات",
+          additions: body.additions || body.selectedAdditions || "لا توجد إضافات",
           images: imagesObj
         };
 
@@ -244,6 +245,7 @@ module.exports = async function handler(req, res) {
 
         await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
+          redirect: "follow",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(cleanPayload)
         }).catch(err => console.error("Google Save Error:", err));

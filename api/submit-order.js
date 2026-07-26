@@ -21,11 +21,10 @@ module.exports = async function handler(req, res) {
         const cleanCode = String(batchCode || "").trim();
         try {
           const response = await fetch(`${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(cleanCode)}`);
-          if (!response.ok) throw new Error("Google Script Error");
           const result = await response.json();
           return res.status(200).json(result);
         } catch (err) {
-          return res.status(200).json({ success: false, message: "تعذر التحقق من الدفعة من سيرفر جوجل" });
+          return res.status(200).json({ success: false, message: "تعذر التحقق من الدفعة" });
         }
       }
     }
@@ -39,10 +38,8 @@ module.exports = async function handler(req, res) {
         try { body = JSON.parse(body); } catch (e) {}
       }
 
-      // تنظيف النصوص لمنع كسر تنسيقات التليجرام (Markdown)
       const cleanText = (str) => (!str ? "غير متوفر" : String(str).replace(/[_*`\[\]()]/g, "\\$&"));
 
-      // استخراج كافة الصور بأمان وتنظيفها
       const parseImages = (data) => {
         let resObj = {};
         try {
@@ -65,31 +62,22 @@ module.exports = async function handler(req, res) {
 
       const imagesObj = parseImages(body);
 
-      // دالة ذكية لإرسال البيانات لجوجل بدون الحبس في مهلة Vercel (Timeout Limit)
-      const sendToGoogleWithTimeout = (payload) => {
-        return Promise.race([
-          fetch(GOOGLE_SCRIPT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          }),
-          // ننتظر 3.5 ثوانٍ كحد أقصى لاستلام جوجل للطلب لفك تعليق Vercel
-          new Promise(resolve => setTimeout(() => resolve({ ok: true, timeout: true }), 3500))
-        ]).catch(err => console.error("Google Fetch Error:", err));
-      };
-
       // ----------------------------------------------------
       // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
       // ----------------------------------------------------
       if (body.actionType === "CREATE_BATCH") {
         const topicName = `${body.uniName || 'دفعة جديدة'} - ${body.collName || ''} - ${body.repName || ''}`;
+        
+        // 1️⃣ إنشاء التوبك في التليجرام أولاً للحصول على رقم التوبك الموحد
         const threadId = await createTelegramTopic(topicName);
-        const finalBatchCode = String(body.batchCode || body.code || threadId || "BATCH").trim();
+        
+        // 2️⃣ الاعتماد الكلي على رقم التوبك كـ كود موحد للدفعة
+        const finalBatchCode = String(threadId || body.batchCode || body.code || "BATCH").trim();
 
         const cleanPayload = {
           actionType: "CREATE_BATCH",
           batchCode: finalBatchCode,
-          threadId: threadId || finalBatchCode,
+          threadId: finalBatchCode,
           repName: body.repName || body.name || "",
           repPhone: body.repPhone || body.phone || "",
           uniName: body.uniName || body.university || "",
@@ -111,17 +99,22 @@ module.exports = async function handler(req, res) {
                     `🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}\n` +
                     `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
 
+        // إرسال البيانات إلى جوجل شيت والتليجرام
         const tasks = [
-          sendToGoogleWithTimeout(cleanPayload),
-          sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, threadId)
+          fetch(GOOGLE_SCRIPT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(cleanPayload)
+          }),
+          sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, finalBatchCode)
         ];
 
         if (imagesObj.logoImg) {
-          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, threadId));
+          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, finalBatchCode));
         }
 
         await Promise.allSettled(tasks);
-        return res.status(200).json({ success: true, batchCode: finalBatchCode, threadId: threadId || finalBatchCode });
+        return res.status(200).json({ success: true, batchCode: finalBatchCode, threadId: finalBatchCode });
       }
 
       // ----------------------------------------------------
@@ -131,22 +124,8 @@ module.exports = async function handler(req, res) {
         const currentBatchCode = String(body.batchCode || body.threadId || "").trim();
         const sName = body.studentName || body.name || "طالب جديد";
 
-        let realThreadId = body.threadId || null;
-        if (!realThreadId && currentBatchCode) {
-          if (!isNaN(Number(currentBatchCode)) && Number(currentBatchCode) > 0) {
-            realThreadId = Number(currentBatchCode);
-          } else {
-            try {
-              const verifyRes = await fetch(`${GOOGLE_SCRIPT_URL}?actionType=VERIFY_BATCH&batchCode=${encodeURIComponent(currentBatchCode)}`, {
-                signal: AbortSignal.timeout(2000)
-              });
-              const verifyData = await verifyRes.json();
-              if (verifyData.success && verifyData.batchData && verifyData.batchData.threadId) {
-                realThreadId = verifyData.batchData.threadId;
-              }
-            } catch(e) {}
-          }
-        }
+        // رقم التوبك هو نفسه كود الدفعة دائماً
+        const realThreadId = currentBatchCode;
 
         const cleanPayload = {
           actionType: "JOIN_BATCH",
@@ -181,12 +160,18 @@ module.exports = async function handler(req, res) {
 
 ➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
 
-        const tasks = [
-          sendToGoogleWithTimeout(cleanPayload),
+        // ننتظر وصول البيانات إلى Google Apps Script بشكل مؤكد
+        await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cleanPayload)
+        }).catch(err => console.error("Google Save Error:", err));
+
+        // إرسال الرسالة والصور للتليجرام
+        const telegramTasks = [
           sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, realThreadId)
         ];
 
-        // تم إضافة sashFixedImg الناقصة هنا
         const labelMap = { 
           sashBackImg: 'صورة ظهر الوشاح', 
           capTopImg: 'صورة فوق القبعة', 
@@ -195,11 +180,11 @@ module.exports = async function handler(req, res) {
 
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
           if (imgBase64 && k !== 'logoImg') {
-            tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, realThreadId));
+            telegramTasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, realThreadId));
           }
         }
 
-        await Promise.allSettled(tasks);
+        await Promise.allSettled(telegramTasks);
         return res.status(200).json({ success: true });
       }
 
@@ -254,19 +239,24 @@ module.exports = async function handler(req, res) {
 
 ➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
 
-        const tasks = [
-          sendToGoogleWithTimeout(cleanPayload),
+        await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cleanPayload)
+        }).catch(err => console.error("Google Save Error:", err));
+
+        const telegramTasks = [
           sendTelegramMessage(TELEGRAM_CHAT_ID, msg)
         ];
 
         const labelMap = { sashFixedImg: 'صورة الطرف الثابت', sashBackImg: 'صورة ظهر الوشاح', capTopImg: 'صورة فوق القبعة', capSideImg: 'صورة جانب القبعة' };
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
           if (imgBase64 && k !== 'logoImg') {
-            tasks.push(sendTelegramPhoto(TELEGRAM_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${studentName}`));
+            telegramTasks.push(sendTelegramPhoto(TELEGRAM_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${studentName}`));
           }
         }
 
-        await Promise.allSettled(tasks);
+        await Promise.allSettled(telegramTasks);
         return res.status(200).json({ success: true });
       }
     }
@@ -276,7 +266,6 @@ module.exports = async function handler(req, res) {
   }
 };
 
-// --- الدوال المساعدة للتليجرام ---
 async function createTelegramTopic(name) {
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createForumTopic`;

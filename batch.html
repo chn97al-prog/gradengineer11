@@ -638,59 +638,63 @@
         }
 
         async function handleCreateBatchSubmit(event) {
-            event.preventDefault();
-            const overlay = document.getElementById('loadingOverlay');
-            overlay.style.display = 'flex';
-            document.getElementById('loadingText').innerText = "جاري حجز الرمز البرمجي للدفعة وتأمينها...";
+    event.preventDefault();
+    const overlay = document.getElementById('loadingOverlay');
+    overlay.style.display = 'flex';
+    document.getElementById('loadingText').innerText = "جاري حجز الرمز البرمجي للدفعة وتأمينها...";
 
-            const batchCode = generateRandomCode();
-            const batchPayload = {
-                actionType: "CREATE_BATCH",
-                batchCode: batchCode,
-                repName: document.getElementById('rep-name').value,
-                repPhone: document.getElementById('rep-phone').value,
-                uniName: document.getElementById('uni-name').value,
-                collName: document.getElementById('coll-name').value,
-                deptName: document.getElementById('dept-name').value,
-                studentCount: document.getElementById('student-count').value,
-                batchModel: document.getElementById('batch-model').value,
-                batchFabric: document.getElementById('batch-fabric').value,
-                uniLogo: uniLogoBase64
-            };
+    // ❌ تم حذف: const batchCode = generateRandomCode();
 
-            try {
-                const response = await fetch(CLOUDFLARE_FUNCTION_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(batchPayload)
-                });
+    const batchPayload = {
+        actionType: "CREATE_BATCH",
+        // لا داعي لإرسال batchCode لأن الـ Backend سيتولى إنشاء رقم التوبك
+        repName: document.getElementById('rep-name').value,
+        repPhone: document.getElementById('rep-phone').value,
+        uniName: document.getElementById('uni-name').value,
+        collName: document.getElementById('coll-name').value,
+        deptName: document.getElementById('dept-name').value,
+        studentCount: document.getElementById('student-count').value,
+        batchModel: document.getElementById('batch-model').value,
+        batchFabric: document.getElementById('batch-fabric').value,
+        uniLogo: uniLogoBase64
+    };
 
-                const result = await response.json();
+    try {
+        const response = await fetch(CLOUDFLARE_FUNCTION_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(batchPayload)
+        });
 
-                if (response.ok && result.success) {
-                    document.getElementById('modalSpinner').style.display = 'none';
-                    overlay.style.backgroundColor = "rgba(6, 12, 24, 0.98)";
-                    document.getElementById('loadingText').innerHTML = `
-                        <span style="font-size: 3rem;">👑</span><br>
-                        <h2 style="color: var(--gold-primary); margin: 15px 0;">تم تأسيس الدفعة بنجاح!</h2>
-                        <p style="color: var(--text-white); font-size: 1rem; margin-bottom: 20px;">
-                            انسخ هذا الكود وشاركه مع زملائك في الدفعة ليقوموا بالانضمام وملء تفاصيلهم مباشرة:
-                        </p>
-                        <div class="batch-code-box">
-                            <div style="font-size: 0.85rem; color: var(--gold-primary);">كود الدفعة الخاص بكم</div>
-                            <div class="batch-code-text">${batchCode}</div>
-                        </div>
-                        <button class="btn-submit" style="width: 200px; margin-top: 15px;" onclick="window.location.href='index.html'">العودة للرئيسية</button>
-                    `;
-                } else {
-                    throw new Error(result.error || "حدثت مشكلة أثناء محاولة إنشاء الدفعة");
-                }
-            } catch (error) {
-                console.error(error);
-                alert("فشل إنشاء الدفعة، يرجى المحاولة لاحقاً.");
-                overlay.style.display = 'none';
-            }
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            // 🟢 استخدام الكود المراجع من السيرفر (رقم التوبك المطابق للشيت والتليجرام)
+            const finalBatchCode = result.batchCode || result.threadId;
+
+            document.getElementById('modalSpinner').style.display = 'none';
+            overlay.style.backgroundColor = "rgba(6, 12, 24, 0.98)";
+            document.getElementById('loadingText').innerHTML = `
+                <span style="font-size: 3rem;">👑</span><br>
+                <h2 style="color: var(--gold-primary); margin: 15px 0;">تم تأسيس الدفعة بنجاح!</h2>
+                <p style="color: var(--text-white); font-size: 1rem; margin-bottom: 20px;">
+                    انسخ هذا الكود وشاركه مع زملائك في الدفعة ليقوموا بالانضمام وملء تفاصيلهم مباشرة:
+                </p>
+                <div class="batch-code-box">
+                    <div style="font-size: 0.85rem; color: var(--gold-primary);">كود الدفعة الخاص بكم</div>
+                    <div class="batch-code-text">${finalBatchCode}</div>
+                </div>
+                <button class="btn-submit" style="width: 200px; margin-top: 15px;" onclick="window.location.href='index.html'">العودة للرئيسية</button>
+            `;
+        } else {
+            throw new Error(result.error || "حدثت مشكلة أثناء محاولة إنشاء الدفعة");
         }
+    } catch (error) {
+        console.error(error);
+        alert("فشل إنشاء الدفعة، يرجى المحاولة لاحقاً.");
+        overlay.style.display = 'none';
+    }
+}
 
         // 🔍 دالة الاستعلام والتحقق فائقة السرعة التي تم إصلاحها
         async function handleVerifyBatch(event) {

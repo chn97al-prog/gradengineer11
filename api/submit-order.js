@@ -153,7 +153,6 @@ module.exports = async function handler(req, res) {
 ----------------------------------
 ✍️ *التطريز:*
 ✨ *الوشاح:* ${cleanText(cleanPayload.sashText)}
-📌 *الطرف الثابت:* ${cleanText(cleanPayload.sashFixedText || "لا يوجد")}
 🎨 *الظهر:* ${cleanText(cleanPayload.sashBackText || "لا يوجد")}
 🎩 *فوق القبعة:* ${cleanText(cleanPayload.capTopText || "لا يوجد")}
 🧢 *جانب القبعة:* ${cleanText(cleanPayload.capSideText || "لا يوجد")}

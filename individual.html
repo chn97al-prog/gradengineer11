@@ -209,6 +209,27 @@
             font-size: 0.85rem;
         }
 
+        .price-box {
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(15, 27, 48, 0.8));
+            border: 1px solid var(--gold-primary);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin: 25px 0;
+        }
+
+        .price-title {
+            color: var(--text-white);
+            font-size: 1rem;
+            margin-bottom: 5px;
+        }
+
+        .price-value {
+            color: var(--gold-primary);
+            font-size: 2rem;
+            font-weight: 800;
+        }
+
         .btn-submit {
             width: 100%;
             background-color: var(--gold-primary);
@@ -380,15 +401,46 @@
         </div>
 
         <div class="form-container" id="form-step">
-            <div class="summary-banner" id="summary-banner">
-                </div>
+            <div class="summary-banner" id="summary-banner"></div>
 
             <form id="individualOrderForm" onsubmit="handleOrderSubmit(event)">
-                <div class="section-title">بيانات الطالب الأساسية</div>
+                <div class="section-title">بيانات الطالب والتوصيل</div>
                 
                 <div class="form-group">
                     <label for="student-name">الاسم الثلاثي للطالب *</label>
                     <input type="text" id="student-name" class="form-control" placeholder="اكتب اسمك الثلاثي بدقة" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="student-phone">رقم الهاتف للواتساب *</label>
+                        <input type="tel" id="student-phone" class="form-control" placeholder="07XXXXXXXXX" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="student-address">العنوان التفصيلي للتوصيل *</label>
+                        <input type="text" id="student-address" class="form-control" placeholder="المحافظة - المنطقة - قرب معلَم" required>
+                    </div>
+                </div>
+
+                <div class="section-title">تحديد ألوان الوشاح والروب</div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="scarf-color">لون الوشاح *</label>
+                        <input type="text" id="scarf-color" class="form-control" placeholder="مثال: ذهبي، كحلي..." required>
+                        <div class="file-upload-wrapper">
+                            <label style="font-size: 0.8rem; opacity: 0.8;">ارفاق صورة لون الوشاح (اختياري)</label>
+                            <input type="file" id="scarf-img" class="file-upload-input" accept="image/*">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="robe-color">لون الروب *</label>
+                        <input type="text" id="robe-color" class="form-control" placeholder="مثال: أسود، أوف وايت..." required>
+                        <div class="file-upload-wrapper">
+                            <label style="font-size: 0.8rem; opacity: 0.8;">ارفاق صورة لون الروب (اختياري)</label>
+                            <input type="file" id="robe-img" class="file-upload-input" accept="image/*">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -438,29 +490,29 @@
                 <div class="additions-box">
                     <div id="american-shawl-option" style="display: none;">
                         <label class="addition-item-label">
-                            <input type="checkbox" id="add-american-shawl" name="addition_items" value="شال أمريكي">
-                            <span>شال أمريكي</span>
+                            <input type="checkbox" id="add-american-shawl" name="addition_items" value="شال أمريكي" data-price="5000" onchange="calculateTotalPrice()">
+                            <span>شال أمريكي (+5,000 د.ع)</span>
                         </label>
                     </div>
 
                     <div>
                         <label class="addition-item-label">
-                            <input type="checkbox" id="add-sleeve-trim" name="addition_items" value="تطعيم في ردن الروب">
-                            <span>تطعيم في ردن الروب</span>
+                            <input type="checkbox" id="add-sleeve-trim" name="addition_items" value="تطعيم في ردن الروب" data-price="3000" onchange="calculateTotalPrice()">
+                            <span>تطعيم في ردن الروب (+3,000 د.ع)</span>
                         </label>
                     </div>
 
                     <div>
                         <label class="addition-item-label">
-                            <input type="checkbox" id="add-padded-sleeve-trim" name="addition_items" value="تطعيم مبطن في ردن الروب">
-                            <span>تطعيم مبطن في ردن الروب</span>
+                            <input type="checkbox" id="add-padded-sleeve-trim" name="addition_items" value="تطعيم مبطن في ردن الروب" data-price="5000" onchange="calculateTotalPrice()">
+                            <span>تطعيم مبطن في ردن الروب (+5,000 د.ع)</span>
                         </label>
                     </div>
 
                     <div>
                         <label class="addition-item-label">
-                            <input type="checkbox" id="add-extra-length" name="addition_items" value="زيادة في الطول" onchange="toggleLengthInput()">
-                            <span>زيادة في الطول (سم)</span>
+                            <input type="checkbox" id="add-extra-length" name="addition_items" value="زيادة في الطول" data-price="4000" onchange="toggleLengthInput()">
+                            <span>زيادة في الطول (سم) (+4,000 د.ع)</span>
                         </label>
                     </div>
 
@@ -499,14 +551,13 @@
                     <input type="number" id="measure-head" class="form-control" placeholder="مثال: 57" required>
                 </div>
 
-                <div class="section-title">تأكيد التواصل والطلب</div>
-                
-                <div class="form-group">
-                    <label for="student-phone">رقم الهاتف الفعال للتواصل والواتساب *</label>
-                    <input type="tel" id="student-phone" class="form-control" placeholder="07XXXXXXXXX" required>
+                <!-- صندوق عرض السعر الكلي النهائي -->
+                <div class="price-box">
+                    <div class="price-title">المبلغ الإجمالي الكلي للطلب:</div>
+                    <div class="price-value" id="display-total-price">35,000 د.ع</div>
                 </div>
 
-                <button type="submit" class="btn-submit" id="submitBtn">ارسال الطلب والقياسات</button>
+                <button type="submit" class="btn-submit" id="submitBtn">تأكيد وإرسال الطلب الفردي</button>
             </form>
         </div>
 
@@ -516,14 +567,13 @@
     </div>
 
     <script>
-        // ✅ التعديل الرئيسي والمثالي للتوجيه داخل كلاود فلير بنجاح وتجاوز جدار الحماية
         const CLOUDFLARE_FUNCTION_URL = '/api/submit-order';
         
         let modelSelected = '';
         let fabricSelected = '';
         let sashSelected = ''; 
+        let basePrice = 35000;
 
-        // وظائف إدارة خيارات الإضافات
         function toggleLengthInput() {
             const checkbox = document.getElementById('add-extra-length');
             const container = document.getElementById('length-amount-container');
@@ -538,6 +588,28 @@
                     input.value = '';
                 }
             }
+            calculateTotalPrice();
+        }
+
+        function calculateTotalPrice() {
+            let total = basePrice;
+
+            // أسعار الأقمشة المضافة
+            if (fabricSelected === 'باربي') total += 5000;
+            if (fabricSelected === 'كوبرا') total += 10000;
+
+            // أسعار الموديل والوشاح
+            if (modelSelected === 'الملكي') total += 5000;
+            if (modelSelected === 'الأمريكي' && sashSelected === 'ملكي') total += 5000;
+
+            // حساب الإضافات المختارة
+            document.querySelectorAll('input[name="addition_items"]:checked').forEach(cb => {
+                const addPrice = parseInt(cb.getAttribute('data-price')) || 0;
+                total += addPrice;
+            });
+
+            document.getElementById('display-total-price').innerText = total.toLocaleString('ar-IQ') + ' د.ع';
+            return total;
         }
 
         function checkAdditionsVisibility(selectedModel) {
@@ -566,7 +638,6 @@
             return selected.length > 0 ? selected.join(' - ') : "لا توجد إضافات";
         }
 
-        // الانتقال لاختيار القماش
         function nextToFabric(modelName, icon) {
             modelSelected = modelName;
             document.getElementById('model-step').style.display = 'none';
@@ -576,7 +647,6 @@
             document.getElementById('page-subtitle').innerText = `الموديل الحالي: ${modelName} ${icon} - يرجى تحديد الخامة`;
         }
 
-        // الانتقال للوشاح (إذا أمريكي) أو مباشرة للاستمارة
         function nextToSashOrForm(fabricName) {
             fabricSelected = fabricName;
             document.getElementById('fabric-step').style.display = 'none';
@@ -591,14 +661,12 @@
             }
         }
 
-        // إنهاء اختيار الوشاح (خاص بالأمريكي) والانتقال للاستمارة
         function finishSelection(sashType, icon) {
             sashSelected = sashType;
             document.getElementById('sash-step').style.display = 'none';
             showForm();
         }
 
-        // إظهار الاستمارة وضبط حقولها ديناميكياً
         function showForm() {
             document.getElementById('form-step').style.display = 'block';
             document.getElementById('page-title').innerText = "تفاصيل وقياسات الطلب الفردي";
@@ -627,9 +695,9 @@
             }
 
             checkAdditionsVisibility(modelSelected);
+            calculateTotalPrice();
         }
 
-        // دالة تحويل الصور إلى Base64
         function fileToBase64(fileInputId) {
             return new Promise((resolve) => {
                 const fileInput = document.getElementById(fileInputId);
@@ -650,7 +718,6 @@
             });
         }
 
-        // معالجة وإرسال الطلب بالكامل
         async function handleOrderSubmit(event) {
             event.preventDefault();
 
@@ -658,18 +725,22 @@
             overlay.style.display = 'flex';
             document.getElementById('loadingText').innerText = "جاري ترميز وضغط الصور المرفقة بأمان...";
 
-            // معالجة الصور وتحويلها لـ Base64
+            // تحويل كل الصور لـ Base64
+            const scarfImg = await fileToBase64('scarf-img');
+            const robeImg = await fileToBase64('robe-img');
             const sashFixedImg = await fileToBase64('sash-fixed-img');
             const sashBackImg = await fileToBase64('sash-back-img');
             const pcbTopImg = await fileToBase64('cap-top-img');
             const pcbSideImg = await fileToBase64('cap-side-img');
 
-            // تجميع كائن البيانات الكامل ليتوافق تماماً مع السيرفر
             const orderData = {
                 actionType: "SINGLE_ORDER", 
                 studentName: document.getElementById('student-name').value,
-                sashText: document.getElementById('sash-text').value,
                 phone: document.getElementById('student-phone').value,
+                address: document.getElementById('student-address').value,
+                scarfColor: document.getElementById('scarf-color').value,
+                robeColor: document.getElementById('robe-color').value,
+                sashText: document.getElementById('sash-text').value,
                 lengthGown: document.getElementById('length-gown').value,
                 lengthSleeve: document.getElementById('length-sleeve').value,
                 shoulder: document.getElementById('measure-shoulder').value,
@@ -683,7 +754,10 @@
                 batchFabric: fabricSelected,
                 sashSelected: sashSelected,
                 additions: getSelectedAdditions(), 
+                totalPrice: calculateTotalPrice() + " د.ع",
                 images: {
+                    scarfImg,
+                    robeImg,
                     sashFixedImg, 
                     sashBackImg,
                     capTopImg: pcbTopImg,
@@ -720,7 +794,7 @@
 
             } catch (error) {
                 console.error("فشل إرسال الطلب بالكامل:", error);
-                alert("حدث خطأ في جدار الحماية أو أثناء الإرسال الآمن، يرجى إعادة المحاولة.");
+                alert("حدث خطأ أثناء الإرسال الآمن، يرجى إعادة المحاولة.");
                 overlay.style.display = 'none';
             }
         }

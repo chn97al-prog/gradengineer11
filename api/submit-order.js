@@ -12,9 +12,6 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(204).end();
 
   try {
-    // ----------------------------------------------------
-    // طلبات التحقق (GET)
-    // ----------------------------------------------------
     if (req.method === "GET") {
       const { actionType, batchCode } = req.query;
       if (actionType === "VERIFY_BATCH") {
@@ -31,9 +28,6 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // ----------------------------------------------------
-    // طلبات الإرسال (POST)
-    // ----------------------------------------------------
     if (req.method === "POST") {
       let body = req.body || {};
       if (typeof body === "string") {
@@ -47,15 +41,13 @@ module.exports = async function handler(req, res) {
         try {
           let raw = data.images || data;
           if (typeof raw === 'object' && !Array.isArray(raw)) {
-            resObj.logoImg = raw.logoImg || raw.logo || raw.uniLogo || data.logoImg || data.logo || null;
-            resObj.sashFixedImg = raw.sashFixedImg || raw.sashFixed || data.sashFixedImg || null;
-            resObj.sashBackImg = raw.sashBackImg || raw.sashBack || data.sashBackImg || null;
-            resObj.capTopImg = raw.capTopImg || raw.capTop || data.capTopImg || null;
-            resObj.capSideImg = raw.capSideImg || raw.capSide || data.capSideImg || null;
-            
-            // 🌟 إضافة استخراج صور ألوان الروب والوشاح
-            resObj.robeColorImg = raw.robeColorImg || data.robeColorImg || null;
-            resObj.sashColorImg = raw.sashColorImg || data.sashColorImg || null;
+            resObj.logoImg = raw.logoImg || raw.logo || raw.uniLogo || null;
+            resObj.sashFixedImg = raw.sashFixedImg || raw.sashFixed || null;
+            resObj.sashBackImg = raw.sashBackImg || raw.sashBack || null;
+            resObj.capTopImg = raw.capTopImg || raw.capTop || null;
+            resObj.capSideImg = raw.capSideImg || raw.capSide || null;
+            resObj.robeColorImg = raw.robeColorImg || null;
+            resObj.sashColorImg = raw.sashColorImg || null;
           }
           for (let key in resObj) {
             if (resObj[key] && typeof resObj[key] === 'object') {
@@ -69,15 +61,11 @@ module.exports = async function handler(req, res) {
       const imagesObj = parseImages(body);
 
       // ----------------------------------------------------
-      // الحالة أ: تأسيس دفعة جديدة (CREATE_BATCH)
+      // 1️⃣ تأسيس دفعة جديدة (CREATE_BATCH) - 🌟 تم التحديث
       // ----------------------------------------------------
       if (body.actionType === "CREATE_BATCH") {
         const topicName = `${body.uniName || 'دفعة جديدة'} - ${body.collName || ''} - ${body.repName || ''}`;
-        
-        // 1️⃣ إنشاء التوبك في التليجرام أولاً للحصول على رقم التوبك الموحد
         const threadId = await createTelegramTopic(topicName);
-        
-        // 2️⃣ الاعتماد الكلي على رقم التوبك كـ كود موحد للدفعة
         const finalBatchCode = String(threadId || body.batchCode || body.code || "BATCH").trim();
 
         const cleanPayload = {
@@ -92,6 +80,8 @@ module.exports = async function handler(req, res) {
           studentCount: body.studentCount || body.count || "0",
           batchModel: body.batchModel || body.model || "غير محدد",
           batchFabric: body.batchFabric || body.fabric || "غير محدد",
+          robeColor: body.robeColor || "غير محدد", // 🌟 لون الروب للدفعة
+          sashColor: body.sashColor || "غير محدد", // 🌟 لون الوشاح للدفعة
           images: imagesObj
         };
 
@@ -103,7 +93,9 @@ module.exports = async function handler(req, res) {
                     `🏛️ *القسم:* ${cleanText(cleanPayload.deptName)}\n` +
                     `👥 *العدد المتوقع:* ${cleanText(cleanPayload.studentCount)}\n` +
                     `🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}\n` +
-                    `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
+                    `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}\n` +
+                    `👔 *لون الروب:* ${cleanText(cleanPayload.robeColor)}\n` +
+                    `🎗️ *لون الوشاح:* ${cleanText(cleanPayload.sashColor)}`;
 
         const tasks = [
           fetch(GOOGLE_SCRIPT_URL, {
@@ -115,8 +107,15 @@ module.exports = async function handler(req, res) {
           sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, finalBatchCode)
         ];
 
+        // 🌟 إرسال الصور للدفعة (الشعار + صورة لون الروب + صورة لون الوشاح)
         if (imagesObj.logoImg) {
           tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, finalBatchCode));
+        }
+        if (imagesObj.robeColorImg) {
+          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.robeColorImg, `📸 توضيح لون الروب للدفعة: ${finalBatchCode}`, finalBatchCode));
+        }
+        if (imagesObj.sashColorImg) {
+          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.sashColorImg, `📸 توضيح لون الوشاح للدفعة: ${finalBatchCode}`, finalBatchCode));
         }
 
         await Promise.allSettled(tasks);
@@ -124,12 +123,11 @@ module.exports = async function handler(req, res) {
       }
 
       // ----------------------------------------------------
-      // الحالة ب: انضمام طالب لدفعة (JOIN_BATCH)
+      // 2️⃣ انضمام طالب لدفعة (JOIN_BATCH)
       // ----------------------------------------------------
       if (body.actionType === "JOIN_BATCH") {
         const currentBatchCode = String(body.batchCode || body.threadId || "").trim();
         const sName = body.studentName || body.name || "طالب جديد";
-
         const realThreadId = currentBatchCode;
 
         const cleanPayload = {
@@ -168,14 +166,9 @@ module.exports = async function handler(req, res) {
           sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, realThreadId)
         ];
 
-        const labelMap = { 
-          sashBackImg: 'صورة ظهر الوشاح', 
-          capTopImg: 'صورة فوق القبعة', 
-          capSideImg: 'صورة جانب القبعة' 
-        };
-
+        const labelMap = { sashBackImg: 'صورة ظهر الوشاح', capTopImg: 'صورة فوق القبعة', capSideImg: 'صورة جانب القبعة' };
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
-          if (imgBase64 && k !== 'logoImg' && k !== 'sashFixedImg') {
+          if (imgBase64 && k !== 'logoImg' && k !== 'sashFixedImg' && k !== 'robeColorImg' && k !== 'sashColorImg') {
             telegramTasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, realThreadId));
           }
         }
@@ -185,7 +178,7 @@ module.exports = async function handler(req, res) {
       }
 
       // ----------------------------------------------------
-      // الحالة ج: طلب فردي (SINGLE_ORDER)
+      // 3️⃣ طلب فردي (SINGLE_ORDER)
       // ----------------------------------------------------
       if (["SINGLE_ORDER", "INDIVIDUAL_ORDER"].includes(body.actionType)) {
         const studentName = body.studentName || "طالب مجهول";
@@ -194,11 +187,12 @@ module.exports = async function handler(req, res) {
           actionType: "SINGLE_ORDER",
           studentName: studentName,
           phone: body.phone || body.studentPhone || "غير متوفر",
+          address: body.address || body.studentAddress || "غير متوفر",
           batchModel: body.batchModel || "غير محدد",
           batchFabric: body.batchFabric || "غير محدد",
           sashSelected: body.sashSelected || "لا ينطبق",
-          robeColor: body.robeColor || "غير محدد", // 🌟 لون الروب
-          sashColor: body.sashColor || "غير محدد", // 🌟 لون الوشاح
+          robeColor: body.robeColor || "غير محدد",
+          sashColor: body.sashColor || "غير محدد",
           lengthGown: body.lengthGown || "0",
           lengthSleeve: body.lengthSleeve || "0",
           shoulder: body.shoulder || "0",
@@ -213,11 +207,11 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
-        // 🌟 تحديث نص الرسالة لتشمل لون الروب ولون الوشاح
         const msg = `🛍️ *طلب فردي جديد بالكامل!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(studentName)}
 📞 *رقم الهاتف:* ${cleanText(cleanPayload.phone)}
+📍 *العنوان:* ${cleanText(cleanPayload.address)}
 
 🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}
 🧵 *نوع القماش:* ${cleanText(cleanPayload.batchFabric)}
@@ -251,7 +245,6 @@ module.exports = async function handler(req, res) {
           sendTelegramMessage(TELEGRAM_CHAT_ID, msg)
         ];
 
-        // 🌟 تحديث خريطة الصور لتشمل تسميات صور الألوان
         const labelMap = { 
           robeColorImg: 'توضيح لون الروب',
           sashColorImg: 'توضيح لون الوشاح',

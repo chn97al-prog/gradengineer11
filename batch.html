@@ -390,7 +390,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="batch-model">نوع الموديل *</label>
-                        <select id="batch-model" class="form-control" required>
+                        <select id="batch-model" class="form-control" required onchange="toggleSashType()">
                             <option value="عادي">عادي 🎓</option>
                             <option value="ملكي">ملكي 👑</option>
                             <option value="امريكي">امريكي ⭐</option>
@@ -406,9 +406,10 @@
                     </div>
                 </div>
 
-                <div class="form-group">
+                <!-- التعديل الأول: خانة اختيار نوع الوشاح (تظهر فقط عند اختيار الموديل الأمريكي) -->
+                <div class="form-group" id="sash-type-group" style="display: none;">
                     <label for="sash-type">نوع الوشاح *</label>
-                    <select id="sash-type" class="form-control" required>
+                    <select id="sash-type" class="form-control">
                         <option value="وشاح عادي">وشاح عادي 🎓</option>
                         <option value="وشاح ملكي">وشاح ملكي 👑</option>
                         <option value="وشاح مائل">وشاح مائل ↗️</option>
@@ -467,7 +468,7 @@
                         <input type="text" id="sash-text" class="form-control" placeholder="مثال: المهندس أحمد" required>
                     </div>
 
-                    <!-- الطرف الثابت (يختفي إذا كان الوشاح مائل) -->
+                    <!-- الطرف الثابت (يختفي إذا كان الوشاح مائل أو حسب الموديل) -->
                     <div class="form-group" id="group-sash-fixed">
                         <label for="sash-fixed-text">التطريز على الطرف الثابت للوشاح</label>
                         <input type="text" id="sash-fixed-text" class="form-control" placeholder="الكتابة المطلوبة">
@@ -477,7 +478,7 @@
                         </div>
                     </div>
 
-                    <!-- ظهر الوشاح (يظهر خصيصاً للوشاح الملكي) -->
+                    <!-- ظهر الوشاح (يظهر خصيصاً للملكي أو حسب الموديل الأمريكي) -->
                     <div class="form-group" id="group-sash-back" style="display: none;">
                         <label for="sash-back-text">الكتابة على ظهر الوشاح</label>
                         <input type="text" id="sash-back-text" class="form-control" placeholder="الكتابة المطلوبة على الظهر">
@@ -556,6 +557,25 @@
         const CLOUDFLARE_FUNCTION_URL = '/api/submit-order';
         let validatedBatchData = null; 
         let uniLogoBase64 = null;
+
+        // إظهار وإخفاء نوع الوشاح حسب الموديل
+        function toggleSashType() {
+            const batchModelSelect = document.getElementById('batch-model');
+            const sashTypeContainer = document.getElementById('sash-type-group');
+            const sashTypeInput = document.getElementById('sash-type');
+            
+            if (batchModelSelect.value === 'امريكي') {
+                sashTypeContainer.style.display = 'block';
+                sashTypeInput.required = true;
+            } else {
+                sashTypeContainer.style.display = 'none';
+                sashTypeInput.required = false;
+                sashTypeInput.value = ''; // تصفير القيمة
+            }
+        }
+
+        // تشغيل الدالة مرة واحدة عند تحميل الصفحة لضبط الحالة الابتدائية
+        document.addEventListener('DOMContentLoaded', toggleSashType);
 
         function toggleLengthInput() {
             const checkbox = document.getElementById('add-extra-length');
@@ -665,6 +685,7 @@
             document.getElementById('create-batch-form').style.display = 'block';
             document.getElementById('page-title').innerText = "تأسيس دفعة جديدة";
             document.getElementById('page-subtitle').innerText = "املأ البيانات لتوليد الكود ومشاركته مع زملائك";
+            toggleSashType(); // التأكد من حالة حقل الوشاح
         }
 
         function showJoinBatchForm() {
@@ -684,6 +705,12 @@
             const robeColorImg = await fileToBase64('robe-color-img');
             const sashColorImg = await fileToBase64('sash-color-img');
 
+            let selectedSashType = document.getElementById('sash-type').value;
+            // إذا لم يكن الموديل أمريكي، نترك نوع الوشاح فارغاً
+            if (document.getElementById('batch-model').value !== 'امريكي') {
+                selectedSashType = '';
+            }
+
             const batchPayload = {
                 actionType: "CREATE_BATCH",
                 repName: document.getElementById('rep-name').value,
@@ -694,7 +721,7 @@
                 studentCount: document.getElementById('student-count').value,
                 batchModel: document.getElementById('batch-model').value,
                 batchFabric: document.getElementById('batch-fabric').value,
-                sashType: document.getElementById('sash-type').value,
+                sashType: selectedSashType,
                 robeColor: document.getElementById('robe-color').value,
                 robeColorImg: robeColorImg,
                 sashColor: document.getElementById('sash-color').value,
@@ -771,23 +798,41 @@
                     const measurementSection = document.getElementById('student-measurement-section');
                     measurementSection.style.display = 'block';
 
-                    // 🔄 الضبط الذكي لحقول الوشاح حسب اختيار الممثل
-                    const sashType = (validatedBatchData.sashType || 'وشاح عادي').trim();
+                    const batchModel = validatedBatchData.batchModel || 'غير محدد';
+                    const sashType = validatedBatchData.sashType || '';
+                    const robeColor = validatedBatchData.robeColor || 'غير محدد';
+                    const sashColor = validatedBatchData.sashColor || 'غير محدد';
+
+                    // 🔄 الضبط الذكي لحقول التطريز حسب الموديل المختار من الممثل
                     const groupFixed = document.getElementById('group-sash-fixed');
                     const groupBack = document.getElementById('group-sash-back');
 
-                    if (sashType.includes('مائل')) {
-                        groupFixed.style.display = 'none';
-                        groupBack.style.display = 'none';
-                    } else if (sashType.includes('ملكي')) {
+                    // إخفاء مبدئي
+                    groupFixed.style.display = 'none';
+                    groupBack.style.display = 'none';
+
+                    if (batchModel === 'امريكي') {
+                        if (sashType.includes('مائل')) {
+                            groupFixed.style.display = 'none';
+                        } else {
+                            groupFixed.style.display = 'block';
+                        }
+                        if (sashType.includes('ملكي')) {
+                            groupBack.style.display = 'block';
+                        }
+                    } else if (batchModel === 'ملكي') {
                         groupFixed.style.display = 'block';
                         groupBack.style.display = 'block';
-                    } else { // وشاح عادي
+                    } else { 
+                        // الموديل العادي
                         groupFixed.style.display = 'block';
-                        groupBack.style.display = 'none';
                     }
 
-                    // ملخص الدفعة المنضمة
+                    // إزالة الملخص القديم إن وجد حتى لا يتكرر
+                    const existingBanner = measurementSection.querySelector('.summary-banner');
+                    if (existingBanner) existingBanner.remove();
+
+                    // ملخص الدفعة المنضمة (عرض الألوان الحقيقية، ونوع الوشاح فقط إذا كان أمريكي)
                     const infoDiv = document.createElement('div');
                     infoDiv.className = 'summary-banner';
                     infoDiv.style.borderColor = 'var(--gold-primary)';
@@ -795,15 +840,15 @@
                         ✅ تم العثور على الدفعة بنجاح!<br>
                         🏫 <b>الجامعة:</b> ${validatedBatchData.uniName} | 🎓 <b>الكلية:</b> ${validatedBatchData.collName}<br>
                         📂 <b>القسم:</b> ${validatedBatchData.deptName}<br>
-                        ✨ <b>الموديل:</b> ${validatedBatchData.batchModel} | 🧵 <b>القماش:</b> ${validatedBatchData.batchFabric}<br>
-                        🎗️ <b>نوع الوشاح:</b> ${validatedBatchData.sashType || 'وشاح عادي'}<br>
-                        🎨 <b>لون الروب:</b> ${validatedBatchData.robeColor || 'غير محدد'} | 🎨 <b>لون الوشاح:</b> ${validatedBatchData.sashColor || 'غير محدد'}
+                        ✨ <b>الموديل:</b> ${batchModel} | 🧵 <b>القماش:</b> ${validatedBatchData.batchFabric}<br>
+                        ${batchModel === 'امريكي' && sashType ? `🎗️ <b>نوع الوشاح:</b> ${sashType}<br>` : ''}
+                        <span style="color: #ffd700;">🎨 <b>لون الروب:</b> ${robeColor} | 🎨 <b>لون الوشاح:</b> ${sashColor}</span>
                     `;
                     measurementSection.insertBefore(infoDiv, measurementSection.firstChild);
 
-                    checkAdditionsVisibility(validatedBatchData.batchModel);
+                    checkAdditionsVisibility(batchModel);
 
-                    document.getElementById('page-subtitle').innerText = "تأكد من مطابقة التفاصيل أعلاه ثم املأ استمارة تطريزك الملكي";
+                    document.getElementById('page-subtitle').innerText = "تأكد من مطابقة التفاصيل أعلاه ثم املأ استمارة تطريزك";
                     
                     measurementSection.scrollIntoView({ behavior: 'smooth' });
                 } else {
@@ -835,11 +880,13 @@
                 deptName: validatedBatchData.deptName,
                 batchModel: validatedBatchData.batchModel,
                 batchFabric: validatedBatchData.batchFabric,
-                sashType: validatedBatchData.sashType || 'وشاح عادي',
+                sashType: validatedBatchData.sashType || '',
+                robeColor: validatedBatchData.robeColor || 'غير محدد',
+                sashColor: validatedBatchData.sashColor || 'غير محدد',
                 studentName: document.getElementById('student-name').value,
                 sashText: document.getElementById('sash-text').value,
-                sashFixedText: document.getElementById('sash-fixed-text').value || 'لم يكتب شيء',
-                sashBackText: document.getElementById('sash-back-text').value || 'لم يكتب شيء',
+                sashFixedText: document.getElementById('sash-fixed-text') ? document.getElementById('sash-fixed-text').value || 'لم يكتب شيء' : 'لم يكتب شيء',
+                sashBackText: document.getElementById('sash-back-text') ? document.getElementById('sash-back-text').value || 'لم يكتب شيء' : 'لم يكتب شيء',
                 capTopText: document.getElementById('cap-top-text').value || 'لم يكتب شيء',
                 capSideText: document.getElementById('cap-side-text').value || 'لم يكتب شيء',
                 additions: getSelectedAdditions(),

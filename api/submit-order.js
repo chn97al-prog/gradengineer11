@@ -52,6 +52,10 @@ module.exports = async function handler(req, res) {
             resObj.sashBackImg = raw.sashBackImg || raw.sashBack || data.sashBackImg || null;
             resObj.capTopImg = raw.capTopImg || raw.capTop || data.capTopImg || null;
             resObj.capSideImg = raw.capSideImg || raw.capSide || data.capSideImg || null;
+            
+            // 🌟 إضافة استخراج صور ألوان الروب والوشاح
+            resObj.robeColorImg = raw.robeColorImg || data.robeColorImg || null;
+            resObj.sashColorImg = raw.sashColorImg || data.sashColorImg || null;
           }
           for (let key in resObj) {
             if (resObj[key] && typeof resObj[key] === 'object') {
@@ -101,7 +105,6 @@ module.exports = async function handler(req, res) {
                     `🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}\n` +
                     `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}`;
 
-        // إرسال البيانات إلى جوجل شيت والتليجرام
         const tasks = [
           fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
@@ -127,10 +130,8 @@ module.exports = async function handler(req, res) {
         const currentBatchCode = String(body.batchCode || body.threadId || "").trim();
         const sName = body.studentName || body.name || "طالب جديد";
 
-        // رقم التوبك هو نفسه كود الدفعة دائماً
         const realThreadId = currentBatchCode;
 
-        // تم استبعاد (الهاتف - القياسات - الطرف الثابت)
         const cleanPayload = {
           actionType: "JOIN_BATCH",
           batchCode: currentBatchCode,
@@ -156,7 +157,6 @@ module.exports = async function handler(req, res) {
 
 ➕ *الإضافات:* ${cleanText(cleanPayload.additions)}`;
 
-        // ننتظر وصول البيانات إلى Google Apps Script بشكل مؤكد
         await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
           redirect: "follow",
@@ -164,7 +164,6 @@ module.exports = async function handler(req, res) {
           body: JSON.stringify(cleanPayload)
         }).catch(err => console.error("Google Save Error:", err));
 
-        // إرسال الرسالة والصور للتليجرام
         const telegramTasks = [
           sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, realThreadId)
         ];
@@ -176,7 +175,6 @@ module.exports = async function handler(req, res) {
         };
 
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
-          // استبعاد صورة الشعار وصورة الطرف الثابت من رسائل انضمام الطالب للدفعة
           if (imgBase64 && k !== 'logoImg' && k !== 'sashFixedImg') {
             telegramTasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${sName}`, realThreadId));
           }
@@ -199,6 +197,8 @@ module.exports = async function handler(req, res) {
           batchModel: body.batchModel || "غير محدد",
           batchFabric: body.batchFabric || "غير محدد",
           sashSelected: body.sashSelected || "لا ينطبق",
+          robeColor: body.robeColor || "غير محدد", // 🌟 لون الروب
+          sashColor: body.sashColor || "غير محدد", // 🌟 لون الوشاح
           lengthGown: body.lengthGown || "0",
           lengthSleeve: body.lengthSleeve || "0",
           shoulder: body.shoulder || "0",
@@ -213,6 +213,7 @@ module.exports = async function handler(req, res) {
           images: imagesObj
         };
 
+        // 🌟 تحديث نص الرسالة لتشمل لون الروب ولون الوشاح
         const msg = `🛍️ *طلب فردي جديد بالكامل!*
 ----------------------------------
 👤 *اسم الطالب:* ${cleanText(studentName)}
@@ -220,6 +221,8 @@ module.exports = async function handler(req, res) {
 
 🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}
 🧵 *نوع القماش:* ${cleanText(cleanPayload.batchFabric)}
+👔 *لون الروب:* ${cleanText(cleanPayload.robeColor)}
+🎗️ *لون الوشاح:* ${cleanText(cleanPayload.sashColor)}
 ----------------------------------
 📏 *القياسات الدقيقة (سم):*
 • طول الروب: \`${cleanText(cleanPayload.lengthGown)}\` سم
@@ -248,7 +251,16 @@ module.exports = async function handler(req, res) {
           sendTelegramMessage(TELEGRAM_CHAT_ID, msg)
         ];
 
-        const labelMap = { sashFixedImg: 'صورة الطرف الثابت', sashBackImg: 'صورة ظهر الوشاح', capTopImg: 'صورة فوق القبعة', capSideImg: 'صورة جانب القبعة' };
+        // 🌟 تحديث خريطة الصور لتشمل تسميات صور الألوان
+        const labelMap = { 
+          robeColorImg: 'توضيح لون الروب',
+          sashColorImg: 'توضيح لون الوشاح',
+          sashFixedImg: 'صورة الطرف الثابت', 
+          sashBackImg: 'صورة ظهر الوشاح', 
+          capTopImg: 'صورة فوق القبعة', 
+          capSideImg: 'صورة جانب القبعة' 
+        };
+
         for (const [k, imgBase64] of Object.entries(imagesObj)) {
           if (imgBase64 && k !== 'logoImg') {
             telegramTasks.push(sendTelegramPhoto(TELEGRAM_CHAT_ID, imgBase64, `📸 [${labelMap[k] || 'صورة'}] للطالب: ${studentName}`));

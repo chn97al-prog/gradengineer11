@@ -379,6 +379,15 @@
                     </div>
                 </div>
 
+               <div class="form-group" id="group-sash-fixed">
+                        <label for="sash-fixed-text">التطريز على الطرف الثابت للوشاح</label>
+                        <input type="text" id="sash-fixed-text" class="form-control" placeholder="الكتابة المطلوبة">
+                        <div class="file-upload-wrapper">
+                            <label style="font-size: 0.8rem; opacity: 0.8;">ارفاق صورة للطرف الثابت (اختياري)</label>
+                            <input type="file" id="sash-fixed-img" class="file-upload-input" accept="image/*">
+                        </div>
+                    </div>
+                
                 <div class="form-group">
                     <label for="uni-logo">شعار الجامعة (إرفاق صورة) *</label>
                     <input type="file" id="uni-logo" class="form-control" accept="image/*" required onchange="processLogoImage(event)">
@@ -466,16 +475,6 @@
                     <div class="form-group">
                         <label for="sash-text">الاسم المطلوب تطريزه على الوشاح *</label>
                         <input type="text" id="sash-text" class="form-control" placeholder="مثال: المهندس أحمد" required>
-                    </div>
-
-                    <!-- الطرف الثابت (يختفي إذا كان الوشاح مائل أو حسب الموديل) -->
-                    <div class="form-group" id="group-sash-fixed">
-                        <label for="sash-fixed-text">التطريز على الطرف الثابت للوشاح</label>
-                        <input type="text" id="sash-fixed-text" class="form-control" placeholder="الكتابة المطلوبة">
-                        <div class="file-upload-wrapper">
-                            <label style="font-size: 0.8rem; opacity: 0.8;">ارفاق صورة للطرف الثابت (اختياري)</label>
-                            <input type="file" id="sash-fixed-img" class="file-upload-input" accept="image/*">
-                        </div>
                     </div>
 
                     <!-- ظهر الوشاح (يظهر خصيصاً للملكي أو حسب الموديل الأمريكي) -->

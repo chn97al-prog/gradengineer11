@@ -61,7 +61,7 @@ module.exports = async function handler(req, res) {
       const imagesObj = parseImages(body);
 
       // ----------------------------------------------------
-      // 1️⃣ تأسيس دفعة جديدة (CREATE_BATCH) - 🌟 تم التحديث
+      // 1️⃣ تأسيس دفعة جديدة (CREATE_BATCH)
       // ----------------------------------------------------
       if (body.actionType === "CREATE_BATCH") {
         const topicName = `${body.uniName || 'دفعة جديدة'} - ${body.collName || ''} - ${body.repName || ''}`;
@@ -80,8 +80,10 @@ module.exports = async function handler(req, res) {
           studentCount: body.studentCount || body.count || "0",
           batchModel: body.batchModel || body.model || "غير محدد",
           batchFabric: body.batchFabric || body.fabric || "غير محدد",
-          robeColor: body.robeColor || "غير محدد", // 🌟 لون الروب للدفعة
-          sashColor: body.sashColor || "غير محدد", // 🌟 لون الوشاح للدفعة
+          sashType: body.sashType || "",
+          robeColor: body.robeColor || "غير محدد",
+          sashColor: body.sashColor || "غير محدد",
+          sashFixedText: body.sashFixedText || "لم يكتب شيء",
           images: imagesObj
         };
 
@@ -94,8 +96,10 @@ module.exports = async function handler(req, res) {
                     `👥 *العدد المتوقع:* ${cleanText(cleanPayload.studentCount)}\n` +
                     `🎨 *الموديل:* ${cleanText(cleanPayload.batchModel)}\n` +
                     `🧵 *القماش:* ${cleanText(cleanPayload.batchFabric)}\n` +
+                    (cleanPayload.sashType ? `🎗️ *نوع الوشاح:* ${cleanText(cleanPayload.sashType)}\n` : '') +
                     `👔 *لون الروب:* ${cleanText(cleanPayload.robeColor)}\n` +
-                    `🎗️ *لون الوشاح:* ${cleanText(cleanPayload.sashColor)}`;
+                    `🎗️ *لون الوشاح:* ${cleanText(cleanPayload.sashColor)}\n` +
+                    `📌 *الطرف الثابت للدفعة:* ${cleanText(cleanPayload.sashFixedText)}`;
 
         const tasks = [
           fetch(GOOGLE_SCRIPT_URL, {
@@ -107,9 +111,11 @@ module.exports = async function handler(req, res) {
           sendTelegramMessage(TELEGRAM_BATCH_CHAT_ID, msg, finalBatchCode)
         ];
 
-        // 🌟 إرسال الصور للدفعة (الشعار + صورة لون الروب + صورة لون الوشاح)
         if (imagesObj.logoImg) {
           tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.logoImg, `📸 شعار الجامعة للدفعة: ${finalBatchCode}`, finalBatchCode));
+        }
+        if (imagesObj.sashFixedImg) {
+          tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.sashFixedImg, `📸 تطريز الطرف الثابت للدفعة: ${finalBatchCode}`, finalBatchCode));
         }
         if (imagesObj.robeColorImg) {
           tasks.push(sendTelegramPhoto(TELEGRAM_BATCH_CHAT_ID, imagesObj.robeColorImg, `📸 توضيح لون الروب للدفعة: ${finalBatchCode}`, finalBatchCode));
@@ -134,7 +140,6 @@ module.exports = async function handler(req, res) {
           actionType: "JOIN_BATCH",
           batchCode: currentBatchCode,
           studentName: sName,
-          sashSelected: body.sashSelected || "غير محدد",
           sashText: body.sashText || "",
           sashBackText: body.sashBackText || body.sashBack || "",
           capTopText: body.capTopText || body.capTop || "",

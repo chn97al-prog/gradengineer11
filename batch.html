@@ -288,17 +288,31 @@
         .addition-item-label {
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
             color: var(--text-white);
             font-size: 0.9rem;
             cursor: pointer;
             margin-bottom: 12px;
+        }
+        .addition-item-label .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .addition-item-label input[type="checkbox"] {
             width: 18px;
             height: 18px;
             accent-color: var(--gold-primary);
             cursor: pointer;
+        }
+        .price-badge {
+            color: var(--gold-primary);
+            font-weight: 700;
+            font-size: 0.85rem;
+            background: rgba(212, 175, 55, 0.1);
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
         }
 
         @keyframes spin {
@@ -379,14 +393,15 @@
                     </div>
                 </div>
 
-               <div class="form-group" id="group-sash-fixed">
-                        <label for="sash-fixed-text">التطريز على الطرف الثابت للوشاح</label>
-                        <input type="text" id="sash-fixed-text" class="form-control" placeholder="الكتابة المطلوبة">
-                        <div class="file-upload-wrapper">
-                            <label style="font-size: 0.8rem; opacity: 0.8;">ارفاق صورة للطرف الثابت (اختياري)</label>
-                            <input type="file" id="sash-fixed-img" class="file-upload-input" accept="image/*">
-                        </div>
+                <!-- الطرف الثابت حصري هنا -->
+                <div class="form-group" id="group-sash-fixed">
+                    <label for="sash-fixed-text">التطريز على الطرف الثابت للوشاح</label>
+                    <input type="text" id="sash-fixed-text" class="form-control" placeholder="الكتابة المطلوبة">
+                    <div class="file-upload-wrapper">
+                        <label style="font-size: 0.8rem; opacity: 0.8;">ارفاق صورة للطرف الثابت (اختياري)</label>
+                        <input type="file" id="sash-fixed-img" class="file-upload-input" accept="image/*">
                     </div>
+                </div>
                 
                 <div class="form-group">
                     <label for="uni-logo">شعار الجامعة (إرفاق صورة) *</label>
@@ -415,7 +430,6 @@
                     </div>
                 </div>
 
-                <!-- التعديل الأول: خانة اختيار نوع الوشاح (تظهر فقط عند اختيار الموديل الأمريكي) -->
                 <div class="form-group" id="sash-type-group" style="display: none;">
                     <label for="sash-type">نوع الوشاح *</label>
                     <select id="sash-type" class="form-control">
@@ -477,7 +491,7 @@
                         <input type="text" id="sash-text" class="form-control" placeholder="مثال: المهندس أحمد" required>
                     </div>
 
-                    <!-- ظهر الوشاح (يظهر خصيصاً للملكي أو حسب الموديل الأمريكي) -->
+                    <!-- ظهر الوشاح (يظهر ديناميكياً حسب الموديل) -->
                     <div class="form-group" id="group-sash-back" style="display: none;">
                         <label for="sash-back-text">الكتابة على ظهر الوشاح</label>
                         <input type="text" id="sash-back-text" class="form-control" placeholder="الكتابة المطلوبة على الظهر">
@@ -487,7 +501,7 @@
                         </div>
                     </div>
 
-                    <!-- تطريز القبعة (ثابت للجميع) -->
+                    <!-- تطريز القبعة -->
                     <div class="form-group">
                         <label for="cap-top-text">الكتابة على القبعة</label>
                         <input type="text" id="cap-top-text" class="form-control" placeholder="الكتابة المطلوبة فوق القبعة">
@@ -510,29 +524,41 @@
                     <div class="additions-box">
                         <div id="american-shawl-option" style="display: none;">
                             <label class="addition-item-label">
-                                <input type="checkbox" id="add-american-shawl" name="addition_items" value="شال أمريكي">
-                                <span>شال أمريكي</span>
+                                <div class="checkbox-container">
+                                    <input type="checkbox" id="add-american-shawl" name="addition_items" value="شال أمريكي (15,000 د.ع)">
+                                    <span>شال أمريكي</span>
+                                </div>
+                                <span class="price-badge">+15,000 د.ع</span>
                             </label>
                         </div>
 
                         <div>
                             <label class="addition-item-label">
-                                <input type="checkbox" id="add-sleeve-trim" name="addition_items" value="تطعيم في ردن الروب">
-                                <span>تطعيم في ردن الروب</span>
+                                <div class="checkbox-container">
+                                    <input type="checkbox" id="add-sleeve-trim" name="addition_items" value="تطعيم ردن (5,000 د.ع)">
+                                    <span>تطعيم ردن</span>
+                                </div>
+                                <span class="price-badge">+5,000 د.ع</span>
                             </label>
                         </div>
 
                         <div>
                             <label class="addition-item-label">
-                                <input type="checkbox" id="add-padded-sleeve-trim" name="addition_items" value="تطعيم مبطن في ردن الروب">
-                                <span>تطعيم مبطن في ردن الروب</span>
+                                <div class="checkbox-container">
+                                    <input type="checkbox" id="add-padded-sleeve-trim" name="addition_items" value="تطعيم مبطن (10,000 د.ع)">
+                                    <span>تطعيم مبطن</span>
+                                </div>
+                                <span class="price-badge">+10,000 د.ع</span>
                             </label>
                         </div>
 
                         <div>
                             <label class="addition-item-label">
-                                <input type="checkbox" id="add-extra-length" name="addition_items" value="زيادة في الطول" onchange="toggleLengthInput()">
-                                <span>زيادة في الطول (بسعر ثابت)</span>
+                                <div class="checkbox-container">
+                                    <input type="checkbox" id="add-extra-length" name="addition_items" value="زيادة في الطول" onchange="toggleLengthInput()">
+                                    <span>زيادة في الطول</span>
+                                </div>
+                                <span class="price-badge">+5,000 د.ع ثابت</span>
                             </label>
                         </div>
 
@@ -557,7 +583,6 @@
         let validatedBatchData = null; 
         let uniLogoBase64 = null;
 
-        // إظهار وإخفاء نوع الوشاح حسب الموديل
         function toggleSashType() {
             const batchModelSelect = document.getElementById('batch-model');
             const sashTypeContainer = document.getElementById('sash-type-group');
@@ -569,11 +594,10 @@
             } else {
                 sashTypeContainer.style.display = 'none';
                 sashTypeInput.required = false;
-                sashTypeInput.value = ''; // تصفير القيمة
+                sashTypeInput.value = '';
             }
         }
 
-        // تشغيل الدالة مرة واحدة عند تحميل الصفحة لضبط الحالة الابتدائية
         document.addEventListener('DOMContentLoaded', toggleSashType);
 
         function toggleLengthInput() {
@@ -609,9 +633,9 @@
         function getSelectedAdditions() {
             let selected = [];
             document.querySelectorAll('input[name="addition_items"]:checked').forEach(cb => {
-                if (cb.value === "زيادة في الطول") {
+                if (cb.id === "add-extra-length") {
                     const lengthCm = document.getElementById('length-amount').value || '0';
-                    selected.push(`زيادة في الطول (+${lengthCm} سم - بسعر ثابت)`);
+                    selected.push(`زيادة في الطول (+${lengthCm} سم - 5,000 د.ع)`);
                 } else {
                     selected.push(cb.value);
                 }
@@ -684,7 +708,7 @@
             document.getElementById('create-batch-form').style.display = 'block';
             document.getElementById('page-title').innerText = "تأسيس دفعة جديدة";
             document.getElementById('page-subtitle').innerText = "املأ البيانات لتوليد الكود ومشاركته مع زملائك";
-            toggleSashType(); // التأكد من حالة حقل الوشاح
+            toggleSashType();
         }
 
         function showJoinBatchForm() {
@@ -703,9 +727,9 @@
 
             const robeColorImg = await fileToBase64('robe-color-img');
             const sashColorImg = await fileToBase64('sash-color-img');
+            const sashFixedImg = await fileToBase64('sash-fixed-img');
 
             let selectedSashType = document.getElementById('sash-type').value;
-            // إذا لم يكن الموديل أمريكي، نترك نوع الوشاح فارغاً
             if (document.getElementById('batch-model').value !== 'امريكي') {
                 selectedSashType = '';
             }
@@ -718,6 +742,8 @@
                 collName: document.getElementById('coll-name').value,
                 deptName: document.getElementById('dept-name').value,
                 studentCount: document.getElementById('student-count').value,
+                sashFixedText: document.getElementById('sash-fixed-text').value || 'لم يكتب شيء',
+                sashFixedImg: sashFixedImg,
                 batchModel: document.getElementById('batch-model').value,
                 batchFabric: document.getElementById('batch-fabric').value,
                 sashType: selectedSashType,
@@ -764,7 +790,7 @@
             }
         }
 
-        // 2️⃣ معالجة التحقق من الكود وضبط الحقول تلقائياً للطلاب
+        // 2️⃣ معالجة التحقق من الكود ورؤية التفاصيل
         async function handleVerifyBatch(event) {
             event.preventDefault();
             const overlay = document.getElementById('loadingOverlay');
@@ -802,36 +828,19 @@
                     const robeColor = validatedBatchData.robeColor || 'غير محدد';
                     const sashColor = validatedBatchData.sashColor || 'غير محدد';
 
-                    // 🔄 الضبط الذكي لحقول التطريز حسب الموديل المختار من الممثل
-                    const groupFixed = document.getElementById('group-sash-fixed');
                     const groupBack = document.getElementById('group-sash-back');
 
-                    // إخفاء مبدئي
-                    groupFixed.style.display = 'none';
-                    groupBack.style.display = 'none';
-
-                    if (batchModel === 'امريكي') {
-                        if (sashType.includes('مائل')) {
-                            groupFixed.style.display = 'none';
-                        } else {
-                            groupFixed.style.display = 'block';
-                        }
-                        if (sashType.includes('ملكي')) {
+                    if (groupBack) {
+                        if (batchModel === 'ملكي' || (batchModel === 'امريكي' && sashType.includes('ملكي'))) {
                             groupBack.style.display = 'block';
+                        } else {
+                            groupBack.style.display = 'none';
                         }
-                    } else if (batchModel === 'ملكي') {
-                        groupFixed.style.display = 'block';
-                        groupBack.style.display = 'block';
-                    } else { 
-                        // الموديل العادي
-                        groupFixed.style.display = 'block';
                     }
 
-                    // إزالة الملخص القديم إن وجد حتى لا يتكرر
                     const existingBanner = measurementSection.querySelector('.summary-banner');
                     if (existingBanner) existingBanner.remove();
 
-                    // ملخص الدفعة المنضمة (عرض الألوان الحقيقية، ونوع الوشاح فقط إذا كان أمريكي)
                     const infoDiv = document.createElement('div');
                     infoDiv.className = 'summary-banner';
                     infoDiv.style.borderColor = 'var(--gold-primary)';
@@ -866,7 +875,6 @@
             overlay.style.display = 'flex';
             document.getElementById('loadingText').innerText = "جاري تشفير وضغط صور التطريزات الفخمة وبناء الهوية...";
 
-            const sashFixedImg = await fileToBase64('sash-fixed-img');
             const sashBackImg = await fileToBase64('sash-back-img');
             const capTopImg = await fileToBase64('cap-top-img');
             const capSideImg = await fileToBase64('cap-side-img');
@@ -884,13 +892,11 @@
                 sashColor: validatedBatchData.sashColor || 'غير محدد',
                 studentName: document.getElementById('student-name').value,
                 sashText: document.getElementById('sash-text').value,
-                sashFixedText: document.getElementById('sash-fixed-text') ? document.getElementById('sash-fixed-text').value || 'لم يكتب شيء' : 'لم يكتب شيء',
                 sashBackText: document.getElementById('sash-back-text') ? document.getElementById('sash-back-text').value || 'لم يكتب شيء' : 'لم يكتب شيء',
                 capTopText: document.getElementById('cap-top-text').value || 'لم يكتب شيء',
                 capSideText: document.getElementById('cap-side-text').value || 'لم يكتب شيء',
                 additions: getSelectedAdditions(),
                 images: {
-                    sashFixedImg: sashFixedImg,
                     sashBackImg: sashBackImg,
                     capTopImg: capTopImg,
                     capSideImg: capSideImg
